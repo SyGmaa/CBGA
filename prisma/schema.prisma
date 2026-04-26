@@ -1,9 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -12,4 +9,153 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Role {
+  PRODI
+  PJPJK
+}
+
+enum Hari {
+  Senin
+  Selasa
+  Rabu
+  Kamis
+  Jumat
+  Sabtu
+}
+
+enum StatusPreferensi {
+  AVAILABLE
+  UNAVAILABLE
+}
+
+enum SemesterTipe {
+  Ganjil
+  Genap
+}
+
+enum StatusJadwal {
+  DRAFT
+  GENERATING
+  FINAL
+}
+
+// ============================================================
+// MODELS
+// ============================================================
+
+model User {
+  id       Int    @id @default(autoincrement())
+  username String @unique
+  email    String @unique
+  password String
+  role     Role
+
+  mataKuliah MataKuliah[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model SlotWaktu {
+  id        Int    @id @default(autoincrement())
+  hari      Hari
+  jamMulai  String @map("jam_mulai")
+  jamSelesai String @map("jam_selesai")
+
+  preferensiWaktuDosen PreferensiWaktuDosen[]
+  jadwalDetail         JadwalDetail[]
+
+  @@unique([hari, jamMulai, jamSelesai])
+  @@map("slot_waktu")
+}
+
+model Ruangan {
+  id          Int    @id @default(autoincrement())
+  namaRuangan String @map("nama_ruangan")
+  namaGedung  String @map("nama_gedung")
+  kapasitas   Int
+
+  jadwalDetail JadwalDetail[]
+
+  @@map("ruangan")
+}
+
+model MataKuliah {
+  id        Int    @id @default(autoincrement())
+  kodeMk    String @unique @map("kode_mk")
+  namaMk    String @map("nama_mk")
+  sks       Int
+  semester  Int
+  jumlahMhs Int    @map("jumlah_mhs")
+
+  idUserProdi Int  @map("id_user_prodi")
+  userProdi   User @relation(fields: [idUserProdi], references: [id])
+
+  jadwalDetail JadwalDetail[]
+
+  @@map("mata_kuliah")
+}
+
+model Dosen {
+  id        Int    @id @default(autoincrement())
+  nidn      String @unique
+  namaDosen String @map("nama_dosen")
+
+  preferensiWaktu PreferensiWaktuDosen[]
+  jadwalDetail    JadwalDetail[]
+
+  @@map("dosen")
+}
+
+model PreferensiWaktuDosen {
+  id          Int              @id @default(autoincrement())
+  idDosen     Int              @map("id_dosen")
+  idSlotWaktu Int              @map("id_slot_waktu")
+  status      StatusPreferensi
+
+  dosen     Dosen     @relation(fields: [idDosen], references: [id], onDelete: Cascade)
+  slotWaktu SlotWaktu @relation(fields: [idSlotWaktu], references: [id], onDelete: Cascade)
+
+  @@unique([idDosen, idSlotWaktu])
+  @@map("preferensi_waktu_dosen")
+}
+
+model JadwalMaster {
+  id            Int          @id @default(autoincrement())
+  tahunAkademik String       @map("tahun_akademik")
+  semesterTipe  SemesterTipe @map("semester_tipe")
+  status        StatusJadwal @default(DRAFT)
+  fitnessScore  Float?       @map("fitness_score")
+
+  jadwalDetail JadwalDetail[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("jadwal_master")
+}
+
+model JadwalDetail {
+  id            Int @id @default(autoincrement())
+  idJadwalMaster Int @map("id_jadwal_master")
+  idMatkul      Int @map("id_matkul")
+  idDosen       Int @map("id_dosen")
+  idRuangan     Int @map("id_ruangan")
+  idSlotWaktu   Int @map("id_slot_waktu")
+
+  jadwalMaster JadwalMaster @relation(fields: [idJadwalMaster], references: [id], onDelete: Cascade)
+  mataKuliah   MataKuliah   @relation(fields: [idMatkul], references: [id])
+  dosen        Dosen        @relation(fields: [idDosen], references: [id])
+  ruangan      Ruangan      @relation(fields: [idRuangan], references: [id])
+  slotWaktu    SlotWaktu    @relation(fields: [idSlotWaktu], references: [id])
+
+  @@map("jadwal_detail")
 }
