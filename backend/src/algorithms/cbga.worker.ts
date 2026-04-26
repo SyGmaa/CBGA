@@ -28,9 +28,10 @@ interface WorkerInput {
     idProdi: number;
     semester: number;
     jumlahMhs: number;
+    sks: number;
   }[];
   allRuanganIds: number[];
-  allSlotWaktuIds: number[];
+  allSlotWaktu: { id: number; hari: string }[];
   ruanganKapasitasMap: [number, number][]; // serialized Map
   preferensiMap: { [dosenId: number]: number[] }; // serialized
   config: {
@@ -58,9 +59,19 @@ for (const [dosenId, slotIds] of Object.entries(input.preferensiMap)) {
 const {
   matkulDosenPairs,
   allRuanganIds,
-  allSlotWaktuIds,
+  allSlotWaktu,
   config,
 } = input;
+
+// Create slot mapping for fitness calculation
+import { type SlotInfo } from "./fitness.ts";
+const slotInfoMap = new Map<number, SlotInfo>();
+const allSlotIdsOrdered: number[] = [];
+
+allSlotWaktu.forEach((s, index) => {
+  slotInfoMap.set(s.id, { id: s.id, hari: s.hari, urutan: index });
+  allSlotIdsOrdered.push(s.id);
+});
 
 // ============================================================
 // Initialize Population
@@ -71,10 +82,10 @@ for (let i = 0; i < config.populationSize; i++) {
   const kromosom = generateRandomKromosom(
     matkulDosenPairs,
     allRuanganIds,
-    allSlotWaktuIds,
+    allSlotIdsOrdered,
     ruanganKapasitasMap
   );
-  const result = calculateFitness(kromosom, preferensiMap);
+  const result = calculateFitness(kromosom, preferensiMap, slotInfoMap, allSlotIdsOrdered);
   population.push({
     kromosom,
     fitness: result.fitness,
@@ -114,11 +125,11 @@ for (let gen = 0; gen < config.maxGenerations; gen++) {
     }
 
     // Mutation
-    child1 = mutate(child1, allRuanganIds, allSlotWaktuIds, ruanganKapasitasMap, config.mutationRate);
-    child2 = mutate(child2, allRuanganIds, allSlotWaktuIds, ruanganKapasitasMap, config.mutationRate);
+    child1 = mutate(child1, allRuanganIds, allSlotIdsOrdered, ruanganKapasitasMap, config.mutationRate);
+    child2 = mutate(child2, allRuanganIds, allSlotIdsOrdered, ruanganKapasitasMap, config.mutationRate);
 
-    const result1 = calculateFitness(child1, preferensiMap);
-    const result2 = calculateFitness(child2, preferensiMap);
+    const result1 = calculateFitness(child1, preferensiMap, slotInfoMap, allSlotIdsOrdered);
+    const result2 = calculateFitness(child2, preferensiMap, slotInfoMap, allSlotIdsOrdered);
 
     newPopulation.push({
       kromosom: child1,
@@ -164,6 +175,7 @@ for (let gen = 0; gen < config.maxGenerations; gen++) {
   }
 }
 
+
 // ============================================================
 // Final Result
 // ============================================================
@@ -183,7 +195,7 @@ while(uniqueResults.length < config.jumlahJadwal && population.length > 0) {
 }
 
 const topResults = uniqueResults.map(ind => {
-  const res = calculateFitness(ind.kromosom, preferensiMap);
+  const res = calculateFitness(ind.kromosom, preferensiMap, slotInfoMap, allSlotIdsOrdered);
   return {
     kromosom: ind.kromosom,
     fitness: res.fitness,
@@ -191,6 +203,7 @@ const topResults = uniqueResults.map(ind => {
     conflicts: res.conflicts,
   };
 });
+
 
 parentPort?.postMessage({
   type: "completed",

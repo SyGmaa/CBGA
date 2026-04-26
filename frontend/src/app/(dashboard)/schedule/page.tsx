@@ -68,10 +68,23 @@ export default function SchedulePage() {
   const getGridData = useCallback(() => {
     if (!result?.jadwalDetail) return {};
     const grid: Record<string, Record<number, JadwalDetail[]>> = {};
-    for (const h of HARI) { grid[h] = {}; for (const s of slots) { if (s.hari === h) grid[h]![s.id] = []; } }
-    for (const d of result.jadwalDetail) {
+    for (const h of HARI) { 
+      grid[h] = {}; 
+      const daySlots = slots.filter(s => s.hari === h).sort((a, b) => a.jamMulai.localeCompare(b.jamMulai));
+      for (const s of daySlots) grid[h]![s.id] = []; 
+    }
+
+    // Sort details to process them in order
+    const sortedDetails = [...result.jadwalDetail].sort((a, b) => {
+      if (a.slotWaktu!.hari !== b.slotWaktu!.hari) return a.slotWaktu!.hari.localeCompare(b.slotWaktu!.hari);
+      return a.slotWaktu!.jamMulai.localeCompare(b.slotWaktu!.jamMulai);
+    });
+
+    for (const d of sortedDetails) {
       const h = d.slotWaktu?.hari || "";
-      if (grid[h] && d.idSlotWaktu in (grid[h] || {})) { grid[h]![d.idSlotWaktu]!.push(d); }
+      if (grid[h] && d.idSlotWaktu in (grid[h] || {})) { 
+        grid[h]![d.idSlotWaktu]!.push(d); 
+      }
     }
     return grid;
   }, [result, slots]);
@@ -79,16 +92,42 @@ export default function SchedulePage() {
   const gridData = getGridData();
 
   const checkSlotAvailability = useCallback((item: JadwalDetail, slotId: number) => {
-    if (!result?.jadwalDetail) return false;
-    const otherItems = result.jadwalDetail.filter(d => d.id !== item.id && d.idSlotWaktu === slotId);
-    for (const d2 of otherItems) {
-      const isRoomClash = item.idRuangan === d2.idRuangan;
-      const isDosenClash = item.idDosen === d2.idDosen;
-      const isSemesterClash = item.mataKuliah?.idProdi === d2.mataKuliah?.idProdi && item.mataKuliah?.semester === d2.mataKuliah?.semester;
-      if (isRoomClash || isDosenClash || isSemesterClash) return false;
+    if (!result?.jadwalDetail || !item.mataKuliah) return false;
+    
+    const targetSlot = slots.find(s => s.id === slotId);
+    if (!targetSlot) return false;
+
+    const sks = item.mataKuliah.sks;
+    const daySlots = slots
+      .filter(s => s.hari === targetSlot.hari)
+      .sort((a, b) => a.jamMulai.localeCompare(b.jamMulai));
+    
+    const startIdx = daySlots.findIndex(s => s.id === slotId);
+    
+    // 1. Check Day Overflow: Must have enough slots remaining in the same day
+    if (startIdx === -1 || (startIdx + sks) > daySlots.length) {
+      return false;
     }
+
+    // 2. Check Multi-slot Conflicts: Check all slots the item will occupy
+    const targetSlotIds = daySlots.slice(startIdx, startIdx + sks).map(s => s.id);
+    
+    for (const other of result.jadwalDetail) {
+      // Skip self and its other slots
+      if (other.idMatkul === item.idMatkul && other.idDosen === item.idDosen) continue;
+      
+      // If the other item occupies any of our target slots
+      if (targetSlotIds.includes(other.idSlotWaktu)) {
+        const isRoomClash = item.idRuangan === other.idRuangan;
+        const isDosenClash = item.idDosen === other.idDosen;
+        const isSemesterClash = item.mataKuliah?.idProdi === other.mataKuliah?.idProdi && item.mataKuliah?.semester === other.mataKuliah?.semester;
+        
+        if (isRoomClash || isDosenClash || isSemesterClash) return false;
+      }
+    }
+
     return true;
-  }, [result]);
+  }, [result, slots]);
 
   const handleDrop = (e: React.DragEvent, slotId: number) => {
     e.preventDefault();
@@ -202,7 +241,49 @@ export default function SchedulePage() {
                         const hariSlot = slotsByHari(hari).find(s => s.jamMulai === timeSlot.jamMulai);
                         const items = hariSlot && gridData[hari] ? gridData[hari]![hariSlot.id] || [] : [];
                         
-                        // Refined Conflict Detection with Reasons
+                        // Check if this slot is a continuation of a previous slot for any item
+                        const isContinuation = (item: JadwalDetail) => {
+                          if (!hariSlot) return false;
+                          const daySlots = slotsByHari(hari);
+                          const currentIdx = daySlots.findIndex(s => s.id === hariSlot.id);
+                          if (currentIdx === 0) return false;
+                          
+                          const prevSlot = daySlots[currentIdx - 1];
+                          const prevItems = gridData[hari]![prevSlot.id] || [];
+                          
+                          // It's a continuation if the SAME matkul-dosen-ruangan combination exists in the previous slot
+                          return prevItems.some(pi => 
+                            pi.idMatkul === item.idMatkul && 
+                            pi.idDosen === item.idDosen && 
+                            pi.idRuangan === item.idRuangan
+                          );
+                        };
+
+                        const visibleItems = items.filter(item => !isContinuation(item));
+
+                        // For visible items, calculate how many slots they span
+                        const getSpan = (item: JadwalDetail) => {
+                          if (!hariSlot) return 1;
+                          const daySlots = slotsByHari(hari);
+                          const startIdx = daySlots.findIndex(s => s.id === hariSlot.id);
+                          let span = 1;
+                          for (let i = startIdx + 1; i < daySlots.length; i++) {
+                            const nextSlot = daySlots[i];
+                            const nextItems = gridData[hari]![nextSlot.id] || [];
+                            if (nextItems.some(ni => 
+                              ni.idMatkul === item.idMatkul && 
+                              ni.idDosen === item.idDosen && 
+                              ni.idRuangan === item.idRuangan
+                            )) {
+                              span++;
+                            } else {
+                              break;
+                            }
+                          }
+                          return span;
+                        };
+
+                        // Conflict Detection (including overlaps from multi-slot items)
                         const conflictMap = new Map<number, string[]>();
                         for (let i = 0; i < items.length; i++) {
                           for (let j = 0; j < items.length; j++) {
@@ -216,20 +297,12 @@ export default function SchedulePage() {
                             if (isRoomClash || isDosenClash || isSemesterClash) {
                               if (!conflictMap.has(d1.id)) conflictMap.set(d1.id, []);
                               const reasons = conflictMap.get(d1.id)!;
-                              
                               if (isRoomClash) reasons.push(`Bentrok Ruangan: ${d2.mataKuliah?.namaMk} juga menggunakan ${d1.ruangan?.namaRuangan}`);
                               if (isDosenClash) reasons.push(`Bentrok Dosen: ${d1.dosen?.namaDosen} juga mengajar ${d2.mataKuliah?.namaMk}`);
                               if (isSemesterClash) reasons.push(`Bentrok Kelas: Semester ${d1.mataKuliah?.semester} Prodi ${d1.mataKuliah?.idProdi} juga ada kuliah ${d2.mataKuliah?.namaMk}`);
                             }
                           }
                         }
-                        
-                        // Deduplicate reasons
-                        conflictMap.forEach((reasons, id) => {
-                          conflictMap.set(id, Array.from(new Set(reasons)));
-                        });
-                        
-                        const hasConflict = conflictMap.size > 0;
 
                         return (
                           <td 
@@ -240,13 +313,15 @@ export default function SchedulePage() {
                               }
                             }}
                             onDrop={(e) => hariSlot && handleDrop(e, hariSlot.id)}
-                            className={`ghost-border border-b border-r p-2 align-top h-[110px] relative transition-all duration-300
-                              ${hasConflict ? "bg-red-50/30" : ""}
+                            className={`ghost-border border-b border-r p-1 align-top h-[110px] relative transition-all duration-300 hover:!z-[999] overflow-visible
+                              ${items.length > 1 ? "bg-red-50/10" : ""}
                               ${draggedItem && hariSlot && checkSlotAvailability(draggedItem, hariSlot.id) ? "bg-green-100/60 ring-2 ring-green-400 ring-inset z-10" : ""}
                             `}
                           >
-                            <div className="flex flex-col gap-2 h-full">
-                              {items.map(d => {
+
+                            <div className="flex flex-col gap-1 h-full overflow-visible">
+                              {visibleItems.map(d => {
+                                const span = getSpan(d);
                                 const isItemConflicting = conflictMap.has(d.id);
                                 const isBeingDragged = draggedItem?.id === d.id;
 
@@ -256,44 +331,56 @@ export default function SchedulePage() {
                                     draggable
                                     onDragStart={() => setDraggedItem(d)}
                                     onDragEnd={() => setDraggedItem(null)}
-                                    className={`rounded p-3 border shadow-sm relative overflow-visible group cursor-grab active:cursor-grabbing hover:shadow-md transition-all duration-300
+                                    style={{ 
+                                      height: `calc(${span} * 110px - 8px)`, 
+                                      zIndex: span > 1 ? 20 : 10 
+                                    }}
+                                    className={`rounded p-3 border shadow-sm relative overflow-visible group cursor-grab active:cursor-grabbing hover:shadow-md transition-all duration-300 hover:!z-[1000]
                                       ${isItemConflicting ? 'bg-red-50 border-red-500 ring-1 ring-red-200' : 'bg-blue-50 border-blue-200'}
                                       ${isBeingDragged ? 'opacity-40 scale-95 shadow-none' : 'opacity-100 scale-100'}
+                                      ${span > 1 ? 'absolute w-[calc(100%-8px)]' : 'relative'}
                                     `}
                                   >
+
                                     {isItemConflicting && (
-                                      <>
-                                        <div className="absolute top-1 right-1 text-red-500 animate-pulse">
-                                          <span className="material-symbols-outlined text-[16px]">warning</span>
-                                        </div>
-                                        
-                                        {/* Tooltip Keterangan Konflik */}
-                                        <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute z-[100] bottom-full left-1/2 -translate-x-1/2 mb-3 w-72 p-4 bg-inverse-surface text-inverse-on-surface text-[12px] rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-outline-variant transition-all duration-200 pointer-events-none">
-                                          <div className="font-bold mb-2 flex items-center gap-2 text-error-container border-b border-outline-variant pb-1.5">
-                                            <span className="material-symbols-outlined text-[16px]">report</span>
-                                            Detail Konflik Jadwal
-                                          </div>
-                                          <ul className="space-y-1.5">
-                                            {conflictMap.get(d.id)?.map((reason, idx) => (
-                                              <li key={idx} className="flex gap-2">
-                                                <span className="text-error-container mt-0.5">•</span>
-                                                <span className="leading-relaxed">{reason}</span>
-                                              </li>
-                                            ))}
-                                          </ul>
-                                          {/* Arrow Tooltip */}
-                                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-[8px] border-transparent border-t-inverse-surface"></div>
-                                        </div>
-                                      </>
+                                      <div className="absolute top-1 right-1 text-red-500 animate-pulse">
+                                        <span className="material-symbols-outlined text-[16px]">warning</span>
+                                      </div>
                                     )}
-                                    <p className={`font-label-sm text-label-sm font-bold line-clamp-1 pr-4 ${isItemConflicting ? 'text-red-900' : 'text-blue-900'}`}>{d.mataKuliah?.namaMk}</p>
+                                    
+                                    <p className={`font-label-sm text-label-sm font-bold line-clamp-2 pr-4 ${isItemConflicting ? 'text-red-900' : 'text-blue-900'}`}>{d.mataKuliah?.namaMk}</p>
                                     <p className={`font-mono-data text-mono-data mt-1 ${isItemConflicting ? 'text-red-700' : 'text-blue-700'}`}>{d.dosen?.namaDosen}</p>
-                                    <div className="mt-4">
-                                      <span className={`absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-bold flex gap-1 ${isItemConflicting ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
-                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isItemConflicting ? 'bg-red-200' : 'bg-blue-200'}`}>{d.ruangan?.namaRuangan} ({d.ruangan?.gedung?.namaGedung})</span>
-                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isItemConflicting ? 'bg-red-200' : 'bg-blue-200'}`}>{d.mataKuliah?.sks} SKS</span>
+                                    
+                                    <div className="mt-auto pt-2 flex flex-wrap gap-1">
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isItemConflicting ? 'bg-red-200 text-red-800' : 'bg-blue-200 text-blue-800'}`}>
+                                        {d.ruangan?.namaRuangan}
+                                      </span>
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isItemConflicting ? 'bg-red-200 text-red-800' : 'bg-blue-200 text-blue-800'}`}>
+                                        {d.mataKuliah?.sks} SKS
                                       </span>
                                     </div>
+
+                                    {/* Tooltip for conflicts - Top Positioning */}
+                                    {isItemConflicting && (
+                                      <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute !z-[9999] bottom-full left-1/2 -translate-x-1/2 mb-3 w-72 p-4 bg-inverse-surface text-inverse-on-surface text-[12px] rounded-xl shadow-2xl border border-outline-variant transition-all duration-200 pointer-events-none">
+                                        <div className="font-bold mb-2 flex items-center gap-2 text-error-container border-b border-outline-variant pb-1.5">
+                                          <span className="material-symbols-outlined text-[16px]">report</span>
+                                          Detail Konflik
+                                        </div>
+                                        <ul className="space-y-1.5">
+                                          {Array.from(new Set(conflictMap.get(d.id))).map((reason, idx) => (
+                                            <li key={idx} className="flex gap-2">
+                                              <span className="text-error-container">•</span>
+                                              <span>{reason}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                        {/* Bottom Arrow Tooltip */}
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-[8px] border-transparent border-t-inverse-surface"></div>
+                                      </div>
+                                    )}
+
+
                                   </div>
                                 );
                               })}
@@ -301,6 +388,7 @@ export default function SchedulePage() {
                           </td>
                         );
                       })}
+
                     </tr>
                   ))}
                 </tbody>

@@ -37,11 +37,16 @@ export async function generateSchedule(req: Request, res: Response) {
     );
     const jadwalMasterId = masters[0].id;
 
-    // Fetch all required data
+    // Fetch all required data (Ordered slots are CRITICAL for consecutive session logic)
     const [mataKuliah, ruanganList, slotWaktuList, preferensiList] = await Promise.all([
       prisma.mataKuliah.findMany(),
       prisma.ruangan.findMany(),
-      prisma.slotWaktu.findMany(),
+      prisma.slotWaktu.findMany({
+        orderBy: [
+          { hari: 'asc' },
+          { jamMulai: 'asc' }
+        ]
+      }),
       prisma.preferensiWaktuDosen.findMany({
         where: { status: "UNAVAILABLE" },
       }),
@@ -62,6 +67,7 @@ export async function generateSchedule(req: Request, res: Response) {
         idProdi: mk.idProdi,
         semester: mk.semester,
         jumlahMhs: mk.jumlahMhs,
+        sks: mk.sks,
       };
     });
 
@@ -127,7 +133,7 @@ export async function generateSchedule(req: Request, res: Response) {
       workerData: {
         matkulDosenPairs,
         allRuanganIds,
-        allSlotWaktuIds,
+        allSlotWaktu: slotWaktuList.map(s => ({ id: s.id, hari: s.hari })),
         ruanganKapasitasMap,
         preferensiMap,
         config: {
@@ -163,13 +169,25 @@ export async function generateSchedule(req: Request, res: Response) {
             const masterId = masters[i]?.id;
             if (!masterId) break;
 
-            const detailData = kromosom.map((gen: any) => ({
-              idJadwalMaster: masterId,
-              idMatkul: gen.idMatkul,
-              idDosen: gen.idDosen,
-              idRuangan: gen.idRuangan,
-              idSlotWaktu: gen.idSlotWaktu,
-            }));
+            const allSlotIds = slotWaktuList.map(s => s.id);
+            const detailData: any[] = [];
+            
+            for (const gen of kromosom) {
+              const startIndex = allSlotIds.indexOf(gen.idSlotWaktu);
+              // Create an entry for each SKS slot
+              for (let s = 0; s < gen.sks; s++) {
+                const currentSlotId = allSlotIds[startIndex + s];
+                if (!currentSlotId) continue;
+                
+                detailData.push({
+                  idJadwalMaster: masterId,
+                  idMatkul: gen.idMatkul,
+                  idDosen: gen.idDosen,
+                  idRuangan: gen.idRuangan,
+                  idSlotWaktu: currentSlotId,
+                });
+              }
+            }
 
             // Use createMany for bulk insert!
             await prisma.jadwalDetail.createMany({ data: detailData });
@@ -278,19 +296,63 @@ export async function updateSlot(req: Request, res: Response) {
     const { idRuangan, idSlotWaktu } = req.body;
     const detailId = Number(req.params.detailId);
 
-    const updated = await prisma.jadwalDetail.update({
+    // Fetch the detail to know which course and master schedule it belongs to
+    const targetDetail = await prisma.jadwalDetail.findUnique({
       where: { id: detailId },
-      data: { idRuangan, idSlotWaktu },
-      include: {
-        mataKuliah: true,
-        dosen: true,
-        ruangan: true,
-        slotWaktu: true,
+      include: { mataKuliah: true }
+    });
+
+    if (!targetDetail) {
+      res.status(404).json({ error: "Detail jadwal tidak ditemukan" });
+      return;
+    }
+
+    // Find all details for this course in this master schedule
+    const courseDetails = await prisma.jadwalDetail.findMany({
+      where: {
+        idJadwalMaster: targetDetail.idJadwalMaster,
+        idMatkul: targetDetail.idMatkul,
+        idDosen: targetDetail.idDosen,
       },
+      orderBy: { idSlotWaktu: 'asc' }
+    });
+
+    // Find starting slot index in ordered list
+    const allSlots = await prisma.slotWaktu.findMany({
+      orderBy: [{ hari: 'asc' }, { jamMulai: 'asc' }]
+    });
+    const allSlotIds = allSlots.map(s => s.id);
+    const newStartIdx = allSlotIds.indexOf(idSlotWaktu);
+
+    if (newStartIdx === -1) {
+       res.status(400).json({ error: "Slot waktu tidak valid" });
+       return;
+    }
+
+    // Update all slots in the block
+    const updates = courseDetails.map((detail, index) => {
+      const nextSlotId = allSlotIds[newStartIdx + index];
+      if (!nextSlotId) return null;
+      return prisma.jadwalDetail.update({
+        where: { id: detail.id },
+        data: { idRuangan, idSlotWaktu: nextSlotId }
+      });
+    }).filter(u => u !== null);
+
+    await prisma.$transaction(updates as any);
+
+    const updatedMaster = await prisma.jadwalMaster.findUnique({
+      where: { id: targetDetail.idJadwalMaster },
+      include: { 
+        jadwalDetail: {
+          where: { id: detailId },
+          include: { mataKuliah: true, dosen: true, ruangan: true, slotWaktu: true }
+        }
+      }
     });
 
     // Auto-update status to FINAL if no conflicts remain
-    const masterId = updated.idJadwalMaster;
+    const masterId = targetDetail.idJadwalMaster;
     const allDetails = await prisma.jadwalDetail.findMany({
       where: { idJadwalMaster: masterId },
       include: { mataKuliah: true }
@@ -320,11 +382,13 @@ export async function updateSlot(req: Request, res: Response) {
       data: { status: hasConflicts ? StatusJadwal.DRAFT : StatusJadwal.FINAL }
     });
 
-    res.json(updated);
+    res.json(updatedMaster?.jadwalDetail[0]);
   } catch (error) {
+    console.error("Update slot error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
+
 
 export async function deleteSchedule(req: Request, res: Response) {
   try {

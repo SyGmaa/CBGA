@@ -7,7 +7,8 @@ export interface Gen {
   idMatkul: number;
   idDosen: number;
   idRuangan: number;
-  idSlotWaktu: number;
+  idSlotWaktu: number; // Starting slot
+  sks: number;        // Number of slots
   // Metadata for constraint checking
   idProdi: number;
   semester: number;
@@ -16,6 +17,12 @@ export interface Gen {
 }
 
 export type Kromosom = Gen[];
+
+export interface SlotInfo {
+  id: number;
+  hari: string;
+  urutan: number; // Order in the day
+}
 
 export interface PreferensiMap {
   [dosenId: number]: Set<number>; // set of unavailable slotWaktu IDs
@@ -28,7 +35,7 @@ export interface FitnessResult {
 }
 
 export interface ConflictDetail {
-  type: "DOSEN_CLASH" | "RUANGAN_CLASH" | "SEMESTER_CLASH" | "KAPASITAS" | "PREFERENSI";
+  type: "DOSEN_CLASH" | "RUANGAN_CLASH" | "SEMESTER_CLASH" | "KAPASITAS" | "PREFERENSI" | "DAY_OVERFLOW";
   genIndex1: number;
   genIndex2?: number;
   message: string;
@@ -36,77 +43,92 @@ export interface ConflictDetail {
 
 export function calculateFitness(
   kromosom: Kromosom,
-  preferensiMap: PreferensiMap
+  preferensiMap: PreferensiMap,
+  slotInfoMap: Map<number, SlotInfo>,
+  allSlotIdsOrdered: number[]
 ): FitnessResult {
   let penalty = 0;
   const conflicts: ConflictDetail[] = [];
 
+  // Usage maps to detect clashes in O(N)
+  // Key: `${type}_${resourceId}_${slotId}`
+  const usageMap = new Map<string, number>(); 
+
+  // Pre-calculate occupied slots for all genes
+  const allOccupied = kromosom.map(gen => {
+    const startIndex = allSlotIdsOrdered.indexOf(gen.idSlotWaktu);
+    if (startIndex === -1) return [gen.idSlotWaktu];
+    return allSlotIdsOrdered.slice(startIndex, startIndex + gen.sks);
+  });
+
   for (let i = 0; i < kromosom.length; i++) {
-    const gen1 = kromosom[i]!;
+    const gen = kromosom[i]!;
+    const occupied = allOccupied[i]!;
+    const startSlot = slotInfoMap.get(gen.idSlotWaktu);
 
-    // === Hard Constraint: Kapasitas ruangan < jumlah mahasiswa ===
-    if (gen1.kapasitasRuangan < gen1.jumlahMhs) {
+    // 1. Kapasitas
+    if (gen.kapasitasRuangan < gen.jumlahMhs) {
       penalty += 50;
-      conflicts.push({
-        type: "KAPASITAS",
-        genIndex1: i,
-        message: `MK idx ${i}: kapasitas ruangan (${gen1.kapasitasRuangan}) < mahasiswa (${gen1.jumlahMhs})`,
-      });
+      conflicts.push({ type: "KAPASITAS", genIndex1: i, message: `MK idx ${i}: kapasitas ruangan terlalu kecil` });
     }
 
-    // === Soft Constraint: Melanggar preferensi waktu dosen ===
-    const unavailableSlots = preferensiMap[gen1.idDosen];
-    if (unavailableSlots && unavailableSlots.has(gen1.idSlotWaktu)) {
-      penalty += 10;
-      conflicts.push({
-        type: "PREFERENSI",
-        genIndex1: i,
-        message: `MK idx ${i}: dosen ${gen1.idDosen} tidak tersedia di slot ${gen1.idSlotWaktu}`,
-      });
+    // 2. Day Overflow
+    if (occupied.length < gen.sks) {
+      penalty += 100;
+      conflicts.push({ type: "DAY_OVERFLOW", genIndex1: i, message: `MK idx ${i}: durasi melebihi slot tersedia` });
+    } else if (startSlot) {
+      const lastSlot = slotInfoMap.get(occupied[occupied.length - 1]!);
+      if (lastSlot && lastSlot.hari !== startSlot.hari) {
+        penalty += 100;
+        conflicts.push({ type: "DAY_OVERFLOW", genIndex1: i, message: `MK idx ${i}: durasi melompati hari` });
+      }
     }
 
-    for (let j = i + 1; j < kromosom.length; j++) {
-      const gen2 = kromosom[j]!;
+    // 3. Preferensi Dosen
+    const unavailableSlots = preferensiMap[gen.idDosen];
+    if (unavailableSlots) {
+      for (const slotId of occupied) {
+        if (unavailableSlots.has(slotId)) {
+          penalty += 10;
+          conflicts.push({ type: "PREFERENSI", genIndex1: i, message: `MK idx ${i}: dosen tidak bersedia` });
+          break;
+        }
+      }
+    }
 
-      // Only check conflicts on same time slot
-      if (gen1.idSlotWaktu !== gen2.idSlotWaktu) continue;
-
-      // === Hard Constraint: Dosen bentrok ===
-      if (gen1.idDosen === gen2.idDosen) {
+    // 4. Resource Clashes (Room, Dosen, Semester)
+    for (const slotId of occupied) {
+      // Check Dosen
+      const dosenKey = `d_${gen.idDosen}_${slotId}`;
+      if (usageMap.has(dosenKey)) {
         penalty += 100;
-        conflicts.push({
-          type: "DOSEN_CLASH",
-          genIndex1: i,
-          genIndex2: j,
-          message: `Dosen ${gen1.idDosen} bentrok di slot ${gen1.idSlotWaktu}`,
-        });
+        conflicts.push({ type: "DOSEN_CLASH", genIndex1: i, genIndex2: usageMap.get(dosenKey), message: `Dosen bentrok di slot ${slotId}` });
+      } else {
+        usageMap.set(dosenKey, i);
       }
 
-      // === Hard Constraint: Ruangan bentrok ===
-      if (gen1.idRuangan === gen2.idRuangan) {
+      // Check Ruangan
+      const ruangKey = `r_${gen.idRuangan}_${slotId}`;
+      if (usageMap.has(ruangKey)) {
         penalty += 100;
-        conflicts.push({
-          type: "RUANGAN_CLASH",
-          genIndex1: i,
-          genIndex2: j,
-          message: `Ruangan ${gen1.idRuangan} bentrok di slot ${gen1.idSlotWaktu}`,
-        });
+        conflicts.push({ type: "RUANGAN_CLASH", genIndex1: i, genIndex2: usageMap.get(ruangKey), message: `Ruangan bentrok di slot ${slotId}` });
+      } else {
+        usageMap.set(ruangKey, i);
       }
 
-      // === Hard Constraint: Mahasiswa prodi & semester sama bentrok ===
-      if (gen1.idProdi === gen2.idProdi && gen1.semester === gen2.semester) {
+      // Check Semester
+      const semKey = `s_${gen.idProdi}_${gen.semester}_${slotId}`;
+      if (usageMap.has(semKey)) {
         penalty += 100;
-        conflicts.push({
-          type: "SEMESTER_CLASH",
-          genIndex1: i,
-          genIndex2: j,
-          message: `Prodi ${gen1.idProdi} Semester ${gen1.semester} bentrok di slot ${gen1.idSlotWaktu}`,
-        });
+        conflicts.push({ type: "SEMESTER_CLASH", genIndex1: i, genIndex2: usageMap.get(semKey), message: `Semester bentrok di slot ${slotId}` });
+      } else {
+        usageMap.set(semKey, i);
       }
     }
   }
 
   const fitness = 1 / (1 + penalty);
-
   return { fitness, penalty, conflicts };
 }
+
+
