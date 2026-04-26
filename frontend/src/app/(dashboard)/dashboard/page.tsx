@@ -1,6 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAppStore } from "@/store/useAppStore";
 import type { DashboardStats } from "@/types";
 
 const statCards = [
@@ -62,119 +63,188 @@ const statCards = [
 ];
 
 export default function DashboardPage() {
+  const { user } = useAppStore();
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["dashboard-stats"],
     queryFn: () => api.getStats() as Promise<DashboardStats>,
   });
 
+  const topStats = [
+    {
+      label: "Total Mata Kuliah",
+      value: stats?.totalMatkul ?? 0,
+      icon: "menu_book",
+      iconBg: "bg-indigo-50",
+      iconColor: "text-indigo-900",
+    },
+    {
+      label: "Total Dosen",
+      value: stats?.totalDosen ?? 0,
+      icon: "groups",
+      iconBg: "bg-emerald-50",
+      iconColor: "text-emerald-900",
+    },
+    {
+      label: "Total Ruangan",
+      value: stats?.totalRuangan ?? 0,
+      icon: "apartment",
+      iconBg: "bg-violet-50",
+      iconColor: "text-violet-900",
+    },
+    {
+      label: "Status Penjadwalan",
+      value: stats?.latestJadwal?.status || "Draft",
+      subValue: "/ Selesai",
+      icon: "calendar_today",
+      iconBg: "bg-rose-50",
+      iconColor: "text-rose-900",
+    },
+  ];
+
+  const activities = stats?.prodiActivities?.map(act => ({
+    prodi: act.username,
+    time: new Date(act.updatedAt).toLocaleString('id-ID', { 
+      day: 'numeric', 
+      month: 'short', 
+      year: 'numeric', 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    }),
+    status: "Selesai", // This could be dynamic based on more complex logic
+    statusColor: "bg-blue-100 text-blue-700"
+  })) || [];
+
+  const fitness = stats?.latestJadwal?.fitnessScore ?? 0;
+  const statusLabel = stats?.latestJadwal?.status || "Draft";
+
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-8 animate-fade-in">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-sm text-muted mt-1">
-          Ringkasan data sistem penjadwalan
+      <div className="space-y-1">
+        <h1 className="text-display-lg font-display-lg text-on-surface">Dashboard Overview</h1>
+        <p className="text-on-surface-variant font-label-sm text-label-sm">
+          Selamat datang kembali, {user?.username || "Admin PJPJK"}
         </p>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-        {statCards.map((card, i) => (
-          <div
-            key={card.key}
-            className="glass-card p-5"
-            style={{ animationDelay: `${i * 80}ms` }}
-          >
-            <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${card.gradient} flex items-center justify-center ${card.iconColor} mb-3`}>
-              {card.icon}
+      {/* Top Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {topStats.map((stat, i) => {
+          // Dynamic value for status
+          const displayValue = stat.label === "Status Penjadwalan" ? statusLabel : stat.value;
+          
+          return (
+            <div
+              key={i}
+              className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm flex justify-between items-start"
+            >
+              <div>
+                <p className="text-on-surface-variant font-label-sm text-label-sm mb-2">{stat.label}</p>
+                <div className="flex items-baseline gap-1">
+                  <p className="text-4xl font-black text-on-surface">{isLoading ? "..." : displayValue}</p>
+                  {stat.subValue && <span className="text-on-surface-variant text-sm">{stat.subValue}</span>}
+                </div>
+              </div>
+              <div className={`w-12 h-12 rounded-full ${stat.iconBg} flex items-center justify-center ${stat.iconColor} relative`}>
+                 <div className="absolute inset-0 bg-current opacity-5 rounded-full scale-150 -translate-y-2 translate-x-2"></div>
+                 <span className="material-symbols-outlined filled text-2xl relative z-10">{stat.icon}</span>
+              </div>
             </div>
-            <p className="text-2xl font-bold">
-              {isLoading ? (
-                <span className="inline-block w-10 h-7 bg-surface rounded animate-pulse" />
-              ) : (
-                (stats as any)?.[card.key] ?? 0
-              )}
-            </p>
-            <p className="text-xs text-muted mt-1">{card.label}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Latest Schedule */}
-      {stats?.latestJadwal && (
-        <div className="glass-card p-6">
-          <h2 className="text-lg font-semibold mb-4">Jadwal Terakhir</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <p className="text-xs text-muted mb-1">Tahun Akademik</p>
-              <p className="font-medium">{stats.latestJadwal.tahunAkademik}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted mb-1">Semester</p>
-              <p className="font-medium">{stats.latestJadwal.semesterTipe}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted mb-1">Status</p>
-              <span
-                className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                  stats.latestJadwal.status === "FINAL"
-                    ? "bg-success/15 text-success"
-                    : stats.latestJadwal.status === "GENERATING"
-                    ? "bg-warning/15 text-warning"
-                    : "bg-muted/15 text-muted"
-                }`}
-              >
-                {stats.latestJadwal.status}
-              </span>
-            </div>
-            <div>
-              <p className="text-xs text-muted mb-1">Fitness Score</p>
-              <p className="font-medium">
-                {stats.latestJadwal.fitnessScore?.toFixed(4) ?? "—"}
-              </p>
+      {/* Main Content Sections */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column: Optimization Status */}
+        <div className="lg:col-span-1 bg-white p-8 rounded-xl border border-slate-100 shadow-sm flex flex-col items-center">
+          <div className="w-full flex items-center gap-3 mb-10">
+            <span className="material-symbols-outlined text-primary text-2xl">published_with_changes</span>
+            <h3 className="font-bold text-on-surface">Status Optimasi Terakhir</h3>
+          </div>
+
+          <div className="relative w-48 h-48 flex items-center justify-center mb-8">
+            <svg className="w-full h-full -rotate-90">
+              <circle
+                cx="96"
+                cy="96"
+                r="88"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="12"
+                className="text-slate-100"
+              />
+              <circle
+                cx="96"
+                cy="96"
+                r="88"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="12"
+                strokeDasharray={552.92}
+                strokeDashoffset={552.92 * (1 - fitness)}
+                strokeLinecap="round"
+                className="text-secondary-container transition-all duration-1000"
+              />
+            </svg>
+            <div className="absolute flex flex-col items-center">
+              <span className="text-4xl font-black text-on-surface">{fitness.toFixed(4)}</span>
+              <span className="text-xs font-bold text-on-surface-variant tracking-widest uppercase">Fitness</span>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Quick Info */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="glass-card p-6">
-          <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-3">
-            Tentang CBGA
-          </h3>
-          <p className="text-sm text-muted leading-relaxed">
-            Community-Based Genetic Algorithm (CBGA) menggunakan pendekatan
-            evolusioner untuk mengoptimalkan penjadwalan mata kuliah. Populasi
-            dibagi berdasarkan Prodi untuk mencegah premature convergence.
+          <p className="text-center text-on-surface-variant text-sm leading-relaxed mb-10 max-w-[240px]">
+            {fitness > 0 
+              ? `Algoritma genetika mencapai fitness score ${fitness.toFixed(4)} pada penjadwalan terakhir.`
+              : "Belum ada data optimasi yang dijalankan pada periode ini."}
           </p>
+
+          <button className="w-full bg-primary text-on-primary py-3 rounded-lg font-bold hover:bg-primary-container transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-95">
+            <span className="material-symbols-outlined text-xl">play_arrow</span>
+            Jalankan Ulang
+          </button>
         </div>
-        <div className="glass-card p-6">
-          <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-3">
-            Constraint
-          </h3>
-          <ul className="space-y-2 text-sm text-muted">
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-danger mt-1.5 shrink-0" />
-              Dosen tidak boleh bentrok di slot yang sama
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-danger mt-1.5 shrink-0" />
-              Ruangan tidak boleh dipakai bersamaan
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-danger mt-1.5 shrink-0" />
-              Mahasiswa semester sama tidak boleh bentrok
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-warning mt-1.5 shrink-0" />
-              Kapasitas ruangan harus mencukupi
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
-              Preferensi waktu dosen diperhatikan
-            </li>
-          </ul>
+
+        {/* Right Column: Activity Table */}
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-100 shadow-sm flex flex-col overflow-hidden">
+          <div className="p-6 flex justify-between items-center">
+            <h3 className="font-bold text-on-surface">Aktivitas Terbaru Prodi</h3>
+            <button className="text-primary font-bold text-sm flex items-center gap-1 hover:underline">
+              Lihat Semua <span className="material-symbols-outlined text-sm">arrow_forward</span>
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-x-auto">
+            {activities.length > 0 ? (
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-surface-container-low border-y border-slate-50">
+                    <th className="px-6 py-4 text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Nama Prodi</th>
+                    <th className="px-6 py-4 text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Waktu Update</th>
+                    <th className="px-6 py-4 text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Status Input Data</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {activities.map((act, i) => (
+                    <tr key={i} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-5 font-bold text-on-surface text-sm">{act.prodi}</td>
+                      <td className="px-6 py-5 text-on-surface-variant text-sm">{act.time}</td>
+                      <td className="px-6 py-5">
+                        <span className={`px-4 py-1 rounded-full text-xs font-bold ${act.statusColor}`}>
+                          {act.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-on-surface-variant">
+                <span className="material-symbols-outlined text-4xl mb-2 opacity-20">history_toggle_off</span>
+                <p className="text-sm">Belum ada aktivitas prodi tercatat.</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -87,6 +87,7 @@ export interface DashboardStats {
   totalSlotWaktu: number;
   totalJadwal: number;
   latestJadwal: JadwalMaster | null;
+  prodiActivities: { username: string; updatedAt: string }[];
 }
 
 export interface GAProgress {

@@ -24,6 +24,16 @@ export async function getStats(req: Request, res: Response) {
       },
     });
 
+    const prodiActivities = await prisma.user.findMany({
+      where: { role: "PRODI" },
+      select: {
+        username: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+    });
+
     res.json({
       totalMatkul,
       totalDosen,
@@ -31,6 +41,7 @@ export async function getStats(req: Request, res: Response) {
       totalSlotWaktu,
       totalJadwal,
       latestJadwal,
+      prodiActivities,
     });
   } catch (error) {
     console.error("Dashboard stats error:", error);

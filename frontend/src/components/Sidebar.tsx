@@ -27,11 +27,11 @@ export default function Sidebar() {
       )}
 
       <nav
-        className={`fixed left-0 top-0 h-screen border-r border-slate-800 bg-slate-900 dark:bg-black text-blue-600 dark:text-blue-400 font-['Inter'] text-sm antialiased shadow-xl flex flex-col py-6 z-50 transition-all duration-300 ease-out
+        className={`fixed left-0 top-0 h-screen border-r border-slate-800 bg-slate-900 text-blue-400 font-['Inter'] text-sm antialiased shadow-xl flex flex-col py-6 z-50 transition-all duration-300 ease-out
           ${sidebarOpen ? "w-72 translate-x-0" : "w-72 -translate-x-full lg:translate-x-0 lg:w-72"}`}
       >
         <div className="px-6 mb-8 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center text-on-primary-container font-black tracking-tight text-xl">
+          <div className="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center text-on-primary-container font-black tracking-tight text-xl shadow-lg border border-white/10">
             J
           </div>
           <div>
@@ -40,7 +40,7 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 space-y-2">
+        <div className="flex-1 overflow-y-auto px-4 space-y-1.5">
           {navItems.map((item, i) => {
             const isActive = pathname === item.href;
             return (
@@ -49,7 +49,7 @@ export default function Sidebar() {
                 href={item.href}
                 className={`flex items-center gap-3 px-6 py-3 rounded-lg transition-all duration-200 scale-98 active:opacity-80
                   ${isActive 
-                    ? "bg-blue-600/10 text-blue-400 font-semibold border-r-4 border-blue-600" 
+                    ? "bg-blue-600/10 text-blue-400 font-semibold border-r-4 border-blue-600 shadow-sm" 
                     : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/50"
                   }`}
               >
@@ -61,15 +61,17 @@ export default function Sidebar() {
         </div>
 
         <div className="px-6 mt-auto space-y-4">
-          <button className="w-full bg-primary text-on-primary py-2 rounded-lg font-medium hover:bg-primary-container transition-colors shadow-sm text-sm">
+          <button className="w-full bg-primary text-on-primary py-2.5 rounded-lg font-medium hover:bg-primary-container transition-all shadow-md text-sm border border-white/5 active:scale-95">
             Generate Report
           </button>
           <div className="pt-4 border-t border-slate-800 space-y-2">
-            <div className="flex items-center gap-3 text-slate-400 px-2 py-2 rounded-lg">
-              <span className="material-symbols-outlined">account_circle</span>
+            <div className="flex items-center gap-3 text-slate-400 px-2 py-2 rounded-lg bg-slate-800/30">
+              <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 border border-slate-600">
+                <span className="material-symbols-outlined text-lg">account_circle</span>
+              </div>
               <div className="flex flex-col">
-                <span className="text-sm font-medium text-slate-200">{user?.username || "User"}</span>
-                <span className="text-[10px] uppercase tracking-wider">{user?.role || "—"}</span>
+                <span className="text-sm font-bold text-slate-200">{user?.username || "Admin"}</span>
+                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">{user?.role || "STAFF"}</span>
               </div>
             </div>
             <button
@@ -77,10 +79,10 @@ export default function Sidebar() {
                 logout();
                 window.location.href = "/";
               }}
-              className="w-full flex items-center gap-3 text-error hover:text-error-container px-2 py-2 rounded-lg hover:bg-slate-800/50 transition-all duration-200"
+              className="w-full flex items-center gap-3 text-error/80 hover:text-error hover:bg-error/10 px-4 py-2.5 rounded-lg transition-all duration-200 group"
             >
-              <span className="material-symbols-outlined">logout</span>
-              Logout
+              <span className="material-symbols-outlined group-hover:rotate-180 transition-transform duration-500">logout</span>
+              <span className="font-medium">Logout</span>
             </button>
           </div>
         </div>
