@@ -4,8 +4,8 @@
   "description": "Optimasi Penjadwalan Mata Kuliah dengan Community-Based Genetic Algorithm",
   "main": "index.js",
   "scripts": {
-    "dev": "concurrently -n \"DB,BACK,FRONT\" -c \"blue,green,magenta\" \"npx prisma dev\" \"npm run dev:backend\" \"npm run dev --prefix frontend\"",
-    "dev:backend": "npx tsx backend/server.ts",
+    "dev": "concurrently -n \"BACK,FRONT\" -c \"green,magenta\" \"npm run dev:backend\" \"npm run dev --prefix frontend\"",
+    "dev:backend": "nodemon --watch backend --ext ts,json --exec npx tsx backend/server.ts",
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:reset": "npx prisma migrate reset",
@@ -26,6 +26,7 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "@faker-js/faker": "^10.4.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
