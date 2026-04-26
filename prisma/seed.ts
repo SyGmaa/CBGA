@@ -1,5 +1,6 @@
 import "dotenv/config";
-import { PrismaClient, Hari, Role, StatusPreferensi } from "../generated/prisma/client.js";
+import pkg from "../generated/prisma/index.js";
+const { PrismaClient, Hari, Role, StatusPreferensi } = pkg;
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();

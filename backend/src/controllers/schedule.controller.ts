@@ -3,7 +3,8 @@ import { Worker } from "worker_threads";
 import path from "path";
 import { fileURLToPath } from "url";
 import prisma from "../services/prisma.ts";
-import { StatusJadwal } from "../../../generated/prisma/client.js";
+import pkg from "../../../generated/prisma/index.js";
+const { StatusJadwal } = pkg;
 
 // Store active socket.io instance reference
 let ioInstance: any = null;
