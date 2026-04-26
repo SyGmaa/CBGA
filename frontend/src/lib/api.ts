@@ -99,4 +99,11 @@ export const api = {
     }),
   deleteSchedule: (id: number) =>
     fetchAPI(`/schedule/${id}`, { method: "DELETE" }),
+  bulkDeleteSchedules: (ids: number[]) =>
+    fetchAPI('/schedule/bulk-delete', { method: "POST", body: JSON.stringify({ ids }) }),
+
+  // Master Lookups
+  getFakultas: () => fetchAPI("/master/fakultas"),
+  getProdi: () => fetchAPI("/master/prodi"),
+  getGedung: () => fetchAPI("/master/gedung"),
 };

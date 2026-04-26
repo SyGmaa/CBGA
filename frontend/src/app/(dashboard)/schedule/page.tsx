@@ -6,14 +6,16 @@ import { connectSocket, disconnectSocket } from "@/lib/socket";
 import { useAppStore } from "@/store/useAppStore";
 import type { JadwalMaster, JadwalDetail, GAProgress, SlotWaktu } from "@/types";
 
-const HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"];
+const HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
 export default function SchedulePage() {
   const qc = useQueryClient();
   const { gaProgress, setGAProgress } = useAppStore();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showGenerate, setShowGenerate] = useState(false);
-  const [genForm, setGenForm] = useState({ tahunAkademik: "2025/2026", semesterTipe: "Ganjil" });
+  const [showManage, setShowManage] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState<number[]>([]);
+  const [genForm, setGenForm] = useState({ tahunAkademik: "2025/2026", semesterTipe: "Ganjil", jumlahJadwal: 10, maxGenerasi: 500 });
 
   const { data: schedules = [] } = useQuery<JadwalMaster[]>({ queryKey: ["schedules"], queryFn: () => api.getSchedules() as Promise<JadwalMaster[]> });
   const { data: result } = useQuery<JadwalMaster>({ queryKey: ["schedule-result", selectedId], queryFn: () => api.getScheduleResult(selectedId!) as Promise<JadwalMaster>, enabled: !!selectedId });
@@ -22,16 +24,30 @@ export default function SchedulePage() {
   const generateMut = useMutation({
     mutationFn: (d: any) => api.generateSchedule(d),
     onSuccess: (data: any) => { setSelectedId(data.jadwalMasterId); setShowGenerate(false); },
+    onError: (error: any) => alert(error.message || "Gagal menghubungi server/database."),
   });
 
   const updateSlotMut = useMutation({
     mutationFn: ({ detailId, data }: { detailId: number; data: any }) => api.updateScheduleSlot(detailId, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["schedule-result", selectedId] }),
+    onError: (error: any) => alert(error.message || "Gagal menyimpan perubahan."),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => api.deleteSchedule(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["schedules"] }); setSelectedId(null); },
+    onError: (error: any) => alert(error.message || "Gagal menghapus jadwal."),
+  });
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: (ids: number[]) => api.bulkDeleteSchedules(ids),
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: ["schedules"] }); 
+      setSelectedForDelete([]);
+      setSelectedId(null);
+      setShowManage(false);
+    },
+    onError: (error: any) => alert(error.message || "Gagal menghapus jadwal massal."),
   });
 
   // Socket.io for real-time progress
@@ -104,20 +120,29 @@ export default function SchedulePage() {
         </div>
 
         {/* Saved Schedules Dropdown (repurposing filter for schedule selection) */}
-        <div className="relative min-w-[250px]">
-          <select 
-            value={selectedId || ""}
-            onChange={(e) => setSelectedId(Number(e.target.value))}
-            className="w-full appearance-none bg-surface-container-lowest border border-outline-variant rounded-lg pl-3 pr-10 py-2 text-on-surface font-body-base text-body-base focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 focus:outline-none"
+        <div className="relative min-w-[250px] flex items-center gap-2">
+          <div className="relative flex-1">
+            <select 
+              value={selectedId || ""}
+              onChange={(e) => setSelectedId(Number(e.target.value))}
+              className="w-full appearance-none bg-surface-container-lowest border border-outline-variant rounded-lg pl-3 pr-10 py-2 text-on-surface font-body-base text-body-base focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 focus:outline-none"
+            >
+              <option value="" disabled>Pilih Jadwal Tersimpan</option>
+              {schedules.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.tahunAkademik} {s.semesterTipe} - {s.status}
+                </option>
+              ))}
+            </select>
+            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+          </div>
+          <button 
+            onClick={() => setShowManage(true)}
+            className="p-2 border border-outline-variant rounded-lg text-error hover:bg-error-container/20 transition-colors"
+            title="Kelola Jadwal (Hapus)"
           >
-            <option value="" disabled>Pilih Jadwal Tersimpan</option>
-            {schedules.map(s => (
-              <option key={s.id} value={s.id}>
-                {s.tahunAkademik} {s.semesterTipe} - {s.status}
-              </option>
-            ))}
-          </select>
-          <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+            <span className="material-symbols-outlined text-[20px]">delete</span>
+          </button>
         </div>
       </div>
 
@@ -155,29 +180,80 @@ export default function SchedulePage() {
                       {HARI.map(hari => {
                         const hariSlot = slotsByHari(hari).find(s => s.jamMulai === timeSlot.jamMulai);
                         const items = hariSlot && gridData[hari] ? gridData[hari]![hariSlot.id] || [] : [];
-                        const isConflict = items.length > 1;
+                        
+                        // Refined Conflict Detection with Reasons
+                        const conflictMap = new Map<number, string[]>();
+                        for (let i = 0; i < items.length; i++) {
+                          for (let j = 0; j < items.length; j++) {
+                            if (i === j) continue;
+                            const d1 = items[i];
+                            const d2 = items[j];
+                            const isRoomClash = d1.idRuangan === d2.idRuangan;
+                            const isDosenClash = d1.idDosen === d2.idDosen;
+                            const isSemesterClash = d1.mataKuliah?.idProdi === d2.mataKuliah?.idProdi && d1.mataKuliah?.semester === d2.mataKuliah?.semester;
+                            
+                            if (isRoomClash || isDosenClash || isSemesterClash) {
+                              if (!conflictMap.has(d1.id)) conflictMap.set(d1.id, []);
+                              const reasons = conflictMap.get(d1.id)!;
+                              
+                              if (isRoomClash) reasons.push(`Bentrok Ruangan: ${d2.mataKuliah?.namaMk} juga menggunakan ${d1.ruangan?.namaRuangan}`);
+                              if (isDosenClash) reasons.push(`Bentrok Dosen: ${d1.dosen?.namaDosen} juga mengajar ${d2.mataKuliah?.namaMk}`);
+                              if (isSemesterClash) reasons.push(`Bentrok Kelas: Semester ${d1.mataKuliah?.semester} Prodi ${d1.mataKuliah?.idProdi} juga ada kuliah ${d2.mataKuliah?.namaMk}`);
+                            }
+                          }
+                        }
+                        
+                        // Deduplicate reasons
+                        conflictMap.forEach((reasons, id) => {
+                          conflictMap.set(id, Array.from(new Set(reasons)));
+                        });
+                        
+                        const hasConflict = conflictMap.size > 0;
 
                         return (
-                          <td key={hari} className={`ghost-border border-b border-r p-2 align-top h-[110px] relative ${isConflict ? "bg-red-50/50" : ""}`}>
+                          <td key={hari} className={`ghost-border border-b border-r p-2 align-top h-[110px] relative ${hasConflict ? "bg-red-50/50" : ""}`}>
                             <div className="flex flex-col gap-2 h-full">
-                              {items.map(d => (
-                                <div key={d.id} className={`rounded p-3 border shadow-sm relative overflow-hidden group cursor-pointer hover:shadow-md transition-shadow
-                                  ${isConflict ? 'bg-red-50 border-red-500' : 'bg-blue-50 border-blue-200'}`}>
-                                  {isConflict && (
-                                    <div className="absolute top-1 right-1 text-red-500 pulse">
-                                      <span className="material-symbols-outlined text-[16px]">warning</span>
+                              {items.map(d => {
+                                const isItemConflicting = conflictMap.has(d.id);
+                                return (
+                                  <div key={d.id} className={`rounded p-3 border shadow-sm relative overflow-visible group cursor-pointer hover:shadow-md transition-all duration-300
+                                    ${isItemConflicting ? 'bg-red-50 border-red-500 ring-1 ring-red-200' : 'bg-blue-50 border-blue-200'}`}>
+                                    {isItemConflicting && (
+                                      <>
+                                        <div className="absolute top-1 right-1 text-red-500 animate-pulse">
+                                          <span className="material-symbols-outlined text-[16px]">warning</span>
+                                        </div>
+                                        
+                                        {/* Tooltip Keterangan Konflik */}
+                                        <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute z-[100] bottom-full left-1/2 -translate-x-1/2 mb-3 w-72 p-4 bg-inverse-surface text-inverse-on-surface text-[12px] rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-outline-variant transition-all duration-200 pointer-events-none">
+                                          <div className="font-bold mb-2 flex items-center gap-2 text-error-container border-b border-outline-variant pb-1.5">
+                                            <span className="material-symbols-outlined text-[16px]">report</span>
+                                            Detail Konflik Jadwal
+                                          </div>
+                                          <ul className="space-y-1.5">
+                                            {conflictMap.get(d.id)?.map((reason, idx) => (
+                                              <li key={idx} className="flex gap-2">
+                                                <span className="text-error-container mt-0.5">•</span>
+                                                <span className="leading-relaxed">{reason}</span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                          {/* Arrow Tooltip */}
+                                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-[8px] border-transparent border-t-inverse-surface"></div>
+                                        </div>
+                                      </>
+                                    )}
+                                    <p className={`font-label-sm text-label-sm font-bold line-clamp-1 pr-4 ${isItemConflicting ? 'text-red-900' : 'text-blue-900'}`}>{d.mataKuliah?.namaMk}</p>
+                                    <p className={`font-mono-data text-mono-data mt-1 ${isItemConflicting ? 'text-red-700' : 'text-blue-700'}`}>{d.dosen?.namaDosen}</p>
+                                    <div className="mt-4">
+                                      <span className={`absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-bold flex gap-1 ${isItemConflicting ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
+                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isItemConflicting ? 'bg-red-200' : 'bg-blue-200'}`}>{d.ruangan?.namaRuangan} ({d.ruangan?.gedung?.namaGedung})</span>
+                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isItemConflicting ? 'bg-red-200' : 'bg-blue-200'}`}>{d.mataKuliah?.sks} SKS</span>
+                                      </span>
                                     </div>
-                                  )}
-                                  <p className={`font-label-sm text-label-sm font-bold line-clamp-1 pr-4 ${isConflict ? 'text-red-900' : 'text-blue-900'}`}>{d.mataKuliah?.namaMk}</p>
-                                  <p className={`font-mono-data text-mono-data mt-1 ${isConflict ? 'text-red-700' : 'text-blue-700'}`}>{d.dosen?.namaDosen}</p>
-                                  <div className="mt-4">
-                                    <span className={`absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-bold flex gap-1 ${isConflict ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isConflict ? 'bg-red-200' : 'bg-blue-200'}`}>{d.ruangan?.namaRuangan}</span>
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isConflict ? 'bg-red-200' : 'bg-blue-200'}`}>{d.mataKuliah?.sks} SKS</span>
-                                    </span>
                                   </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </td>
                         );
@@ -232,6 +308,77 @@ export default function SchedulePage() {
         </div>
       )}
 
+      {/* Manage/Delete Schedules Modal */}
+      {showManage && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowManage(false)}>
+          <div className="bg-surface-container-lowest rounded-xl shadow-lg border border-outline-variant w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-headline-md text-lg text-on-surface">Kelola Jadwal</h2>
+              <button onClick={() => setShowManage(false)} className="text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="max-h-[300px] overflow-y-auto mb-4 border border-outline-variant rounded-lg">
+              {schedules.length === 0 ? (
+                <div className="p-4 text-center text-on-surface-variant text-sm">Tidak ada jadwal tersimpan.</div>
+              ) : (
+                <ul className="divide-y divide-outline-variant">
+                  {schedules.map(s => (
+                    <li key={s.id} className="flex items-center gap-3 p-3 hover:bg-surface-variant/50 transition-colors">
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 text-primary rounded border-outline-variant focus:ring-primary"
+                        checked={selectedForDelete.includes(s.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedForDelete(prev => [...prev, s.id]);
+                          else setSelectedForDelete(prev => prev.filter(id => id !== s.id));
+                        }}
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-on-surface">{s.tahunAkademik} - {s.semesterTipe}</p>
+                        <p className="text-xs text-on-surface-variant">Status: {s.status}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="flex justify-between items-center mt-4 pt-4 border-t border-outline-variant">
+              <div className="text-sm text-on-surface-variant">
+                {selectedForDelete.length} dipilih
+              </div>
+              <div className="flex gap-2">
+                {selectedForDelete.length > 0 && selectedForDelete.length < schedules.length && (
+                  <button 
+                    onClick={() => setSelectedForDelete(schedules.map(s => s.id))}
+                    className="px-3 py-1.5 text-primary text-sm font-semibold hover:bg-primary/10 rounded-lg transition-colors"
+                  >
+                    Pilih Semua
+                  </button>
+                )}
+                {selectedForDelete.length === schedules.length && schedules.length > 0 && (
+                  <button 
+                    onClick={() => setSelectedForDelete([])}
+                    className="px-3 py-1.5 text-primary text-sm font-semibold hover:bg-primary/10 rounded-lg transition-colors"
+                  >
+                    Batal Pilih
+                  </button>
+                )}
+                <button 
+                  onClick={() => bulkDeleteMut.mutate(selectedForDelete)}
+                  disabled={selectedForDelete.length === 0 || bulkDeleteMut.isPending}
+                  className="px-4 py-1.5 bg-error text-on-error font-label-sm text-label-sm rounded-lg hover:bg-error/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {bulkDeleteMut.isPending ? "Menghapus..." : "Hapus Terpilih"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Simple Input Modal for "Generate" */}
       {showGenerate && !gaProgress && (
         <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowGenerate(false)}>
@@ -257,6 +404,30 @@ export default function SchedulePage() {
                   <option value="Ganjil">Ganjil</option>
                   <option value="Genap">Genap</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-on-surface-variant uppercase mb-2">Jumlah Alternatif Jadwal (Max 1000)</label>
+                <input 
+                  type="number"
+                  min="1"
+                  max="1000"
+                  className="w-full px-3 py-2 border border-outline-variant rounded-lg bg-surface-bright text-on-surface focus:outline-none focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 text-sm" 
+                  value={genForm.jumlahJadwal} 
+                  onChange={e => setGenForm({...genForm, jumlahJadwal: parseInt(e.target.value) || 10})} 
+                  required 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-on-surface-variant uppercase mb-2">Batas Generasi (Max 2000)</label>
+                <input 
+                  type="number"
+                  min="1"
+                  max="2000"
+                  className="w-full px-3 py-2 border border-outline-variant rounded-lg bg-surface-bright text-on-surface focus:outline-none focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 text-sm" 
+                  value={genForm.maxGenerasi} 
+                  onChange={e => setGenForm({...genForm, maxGenerasi: parseInt(e.target.value) || 500})} 
+                  required 
+                />
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => setShowGenerate(false)} className="px-4 py-2 border border-outline text-on-surface font-label-sm text-label-sm rounded-lg hover:bg-surface-variant transition-colors flex-1">Batal</button>

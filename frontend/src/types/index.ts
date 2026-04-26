@@ -13,6 +13,21 @@ export interface User {
   username: string;
   email: string;
   role: Role;
+  idProdi?: number;
+  prodi?: Prodi;
+}
+
+export interface Fakultas {
+  id: number;
+  namaFakultas: string;
+}
+
+export interface Prodi {
+  id: number;
+  namaProdi: string;
+  kodeProdi: string;
+  idFakultas: number;
+  fakultas?: Fakultas;
 }
 
 export interface SlotWaktu {
@@ -22,10 +37,16 @@ export interface SlotWaktu {
   jamSelesai: string;
 }
 
+export interface Gedung {
+  id: number;
+  namaGedung: string;
+}
+
 export interface Ruangan {
   id: number;
   namaRuangan: string;
-  namaGedung: string;
+  idGedung: number;
+  gedung?: Gedung;
   kapasitas: number;
 }
 
@@ -36,14 +57,16 @@ export interface MataKuliah {
   sks: number;
   semester: number;
   jumlahMhs: number;
-  idUserProdi: number;
-  userProdi?: { id: number; username: string };
+  idProdi: number;
+  prodi?: Prodi;
 }
 
 export interface Dosen {
   id: number;
   nidn: string;
   namaDosen: string;
+  idProdi?: number;
+  prodi?: Prodi;
   preferensiWaktu?: PreferensiWaktuDosen[];
 }
 
