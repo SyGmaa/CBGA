@@ -289,6 +289,37 @@ export async function updateSlot(req: Request, res: Response) {
       },
     });
 
+    // Auto-update status to FINAL if no conflicts remain
+    const masterId = updated.idJadwalMaster;
+    const allDetails = await prisma.jadwalDetail.findMany({
+      where: { idJadwalMaster: masterId },
+      include: { mataKuliah: true }
+    });
+
+    let hasConflicts = false;
+    for (let i = 0; i < allDetails.length; i++) {
+      for (let j = i + 1; j < allDetails.length; j++) {
+        const d1 = allDetails[i];
+        const d2 = allDetails[j];
+        if (d1.idSlotWaktu !== d2.idSlotWaktu) continue;
+
+        const isRoomClash = d1.idRuangan === d2.idRuangan;
+        const isDosenClash = d1.idDosen === d2.idDosen;
+        const isSemesterClash = d1.mataKuliah?.idProdi === d2.mataKuliah?.idProdi && d1.mataKuliah?.semester === d2.mataKuliah?.semester;
+
+        if (isRoomClash || isDosenClash || isSemesterClash) {
+          hasConflicts = true;
+          break;
+        }
+      }
+      if (hasConflicts) break;
+    }
+
+    await prisma.jadwalMaster.update({
+      where: { id: masterId },
+      data: { status: hasConflicts ? StatusJadwal.DRAFT : StatusJadwal.FINAL }
+    });
+
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });

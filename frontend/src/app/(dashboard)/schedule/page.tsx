@@ -12,6 +12,7 @@ export default function SchedulePage() {
   const qc = useQueryClient();
   const { gaProgress, setGAProgress } = useAppStore();
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [draggedItem, setDraggedItem] = useState<JadwalDetail | null>(null);
   const [showGenerate, setShowGenerate] = useState(false);
   const [showManage, setShowManage] = useState(false);
   const [selectedForDelete, setSelectedForDelete] = useState<number[]>([]);
@@ -76,6 +77,26 @@ export default function SchedulePage() {
   }, [result, slots]);
 
   const gridData = getGridData();
+
+  const checkSlotAvailability = useCallback((item: JadwalDetail, slotId: number) => {
+    if (!result?.jadwalDetail) return false;
+    const otherItems = result.jadwalDetail.filter(d => d.id !== item.id && d.idSlotWaktu === slotId);
+    for (const d2 of otherItems) {
+      const isRoomClash = item.idRuangan === d2.idRuangan;
+      const isDosenClash = item.idDosen === d2.idDosen;
+      const isSemesterClash = item.mataKuliah?.idProdi === d2.mataKuliah?.idProdi && item.mataKuliah?.semester === d2.mataKuliah?.semester;
+      if (isRoomClash || isDosenClash || isSemesterClash) return false;
+    }
+    return true;
+  }, [result]);
+
+  const handleDrop = (e: React.DragEvent, slotId: number) => {
+    e.preventDefault();
+    if (!draggedItem) return;
+    updateSlotMut.mutate({ detailId: draggedItem.id, data: { idSlotWaktu: slotId } });
+    setDraggedItem(null);
+  };
+
   const slotsByHari = (hari: string) => slots.filter(s => s.hari === hari).sort((a, b) => a.jamMulai.localeCompare(b.jamMulai));
   const uniqueSlotTimes = slots.filter(s => s.hari === "Senin").sort((a, b) => a.jamMulai.localeCompare(b.jamMulai));
 
@@ -211,13 +232,35 @@ export default function SchedulePage() {
                         const hasConflict = conflictMap.size > 0;
 
                         return (
-                          <td key={hari} className={`ghost-border border-b border-r p-2 align-top h-[110px] relative ${hasConflict ? "bg-red-50/50" : ""}`}>
+                          <td 
+                            key={hari} 
+                            onDragOver={(e) => {
+                              if (draggedItem && hariSlot && checkSlotAvailability(draggedItem, hariSlot.id)) {
+                                e.preventDefault();
+                              }
+                            }}
+                            onDrop={(e) => hariSlot && handleDrop(e, hariSlot.id)}
+                            className={`ghost-border border-b border-r p-2 align-top h-[110px] relative transition-all duration-300
+                              ${hasConflict ? "bg-red-50/30" : ""}
+                              ${draggedItem && hariSlot && checkSlotAvailability(draggedItem, hariSlot.id) ? "bg-green-100/60 ring-2 ring-green-400 ring-inset z-10" : ""}
+                            `}
+                          >
                             <div className="flex flex-col gap-2 h-full">
                               {items.map(d => {
                                 const isItemConflicting = conflictMap.has(d.id);
+                                const isBeingDragged = draggedItem?.id === d.id;
+
                                 return (
-                                  <div key={d.id} className={`rounded p-3 border shadow-sm relative overflow-visible group cursor-pointer hover:shadow-md transition-all duration-300
-                                    ${isItemConflicting ? 'bg-red-50 border-red-500 ring-1 ring-red-200' : 'bg-blue-50 border-blue-200'}`}>
+                                  <div 
+                                    key={d.id} 
+                                    draggable
+                                    onDragStart={() => setDraggedItem(d)}
+                                    onDragEnd={() => setDraggedItem(null)}
+                                    className={`rounded p-3 border shadow-sm relative overflow-visible group cursor-grab active:cursor-grabbing hover:shadow-md transition-all duration-300
+                                      ${isItemConflicting ? 'bg-red-50 border-red-500 ring-1 ring-red-200' : 'bg-blue-50 border-blue-200'}
+                                      ${isBeingDragged ? 'opacity-40 scale-95 shadow-none' : 'opacity-100 scale-100'}
+                                    `}
+                                  >
                                     {isItemConflicting && (
                                       <>
                                         <div className="absolute top-1 right-1 text-red-500 animate-pulse">
