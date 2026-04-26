@@ -2,19 +2,80 @@ import "dotenv/config";
 import pkg from "../generated/prisma/index.js";
 const { PrismaClient, Hari, Role, StatusPreferensi } = pkg;
 import bcrypt from "bcryptjs";
+import { fakerID_ID as faker } from '@faker-js/faker';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🌱 Memulai proses seeding database CBGA...\n");
+  console.log("🌱 Memulai proses seeding database CBGA (University Scale)...\n");
+  console.log("🧹 Membersihkan data lama...");
+  await prisma.jadwalDetail.deleteMany({});
+  await prisma.preferensiWaktuDosen.deleteMany({});
+  await prisma.slotWaktu.deleteMany({});
+  await prisma.ruangan.deleteMany({});
+  await prisma.gedung.deleteMany({});
+  await prisma.dosen.deleteMany({});
+  await prisma.mataKuliah.deleteMany({});
 
   // ============================================================
-  // 1. USERS
+  // 1. FAKULTAS
+  // ============================================================
+  console.log("📌 Seeding Fakultas...");
+  const fkt = await prisma.fakultas.upsert({
+    where: { namaFakultas: "Universitas Pahlawan" }, // Contoh default fakultas
+    update: {},
+    create: { namaFakultas: "Universitas Pahlawan" },
+  });
+  console.log("   ✅ Fakultas created");
+
+  // ============================================================
+  // 2. PRODI
+  // ============================================================
+  console.log("📌 Seeding 19 Prodi...");
+  const daftarProdi = [
+    { nama: "Teknik Informatika", kode: "TIF" },
+    { nama: "Sistem Informasi", kode: "SIF" },
+    { nama: "Teknik Sipil", kode: "TSP" },
+    { nama: "Teknik Mesin", kode: "TMS" },
+    { nama: "Teknik Elektro", kode: "TEL" },
+    { nama: "Teknik Industri", kode: "TIN" },
+    { nama: "Hukum", kode: "HKM" },
+    { nama: "Manajemen", kode: "MNJ" },
+    { nama: "Akuntansi", kode: "AKT" },
+    { nama: "Kedokteran", kode: "KED" },
+    { nama: "Keperawatan", kode: "KEP" },
+    { nama: "Kebidanan", kode: "KBD" },
+    { nama: "Kesehatan Masyarakat", kode: "KES" },
+    { nama: "Farmasi", kode: "FAR" },
+    { nama: "Gizi", kode: "GIZ" },
+    { nama: "Pendidikan Guru Sekolah Dasar", kode: "PGSD" },
+    { nama: "Pendidikan Bahasa Inggris", kode: "PBI" },
+    { nama: "Ilmu Komunikasi", kode: "IKM" },
+    { nama: "Psikologi", kode: "PSI" },
+  ];
+
+  const createdProdis = [];
+  for (const p of daftarProdi) {
+    const prodi = await prisma.prodi.upsert({
+      where: { kodeProdi: p.kode },
+      update: {},
+      create: {
+        namaProdi: p.nama,
+        kodeProdi: p.kode,
+        idFakultas: fkt.id,
+      },
+    });
+    createdProdis.push(prodi);
+  }
+  console.log(`   ✅ ${createdProdis.length} Prodi created`);
+
+  // ============================================================
+  // 3. USERS
   // ============================================================
   console.log("📌 Seeding Users...");
   const hashedPassword = await bcrypt.hash("password123", 10);
 
-  const adminPjpjk = await prisma.user.upsert({
+  await prisma.user.upsert({
     where: { username: "admin_pjpjk" },
     update: {},
     create: {
@@ -25,247 +86,193 @@ async function main() {
     },
   });
 
-  const prodiTi = await prisma.user.upsert({
-    where: { username: "prodi_ti" },
-    update: {},
-    create: {
-      username: "prodi_ti",
-      email: "prodi_ti@univ-pahlawan.ac.id",
-      password: hashedPassword,
-      role: Role.PRODI,
-    },
-  });
-
-  const prodiSi = await prisma.user.upsert({
-    where: { username: "prodi_si" },
-    update: {},
-    create: {
-      username: "prodi_si",
-      email: "prodi_si@univ-pahlawan.ac.id",
-      password: hashedPassword,
-      role: Role.PRODI,
-    },
-  });
-
-  console.log("   ✅ 3 users created\n");
+  for (const prodi of createdProdis) {
+    const username = `prodi_${prodi.kodeProdi.toLowerCase()}`;
+    await prisma.user.upsert({
+      where: { username: username },
+      update: {},
+      create: {
+        username: username,
+        email: `${username}@univ-pahlawan.ac.id`,
+        password: hashedPassword,
+        role: Role.PRODI,
+        idProdi: prodi.id,
+      },
+    });
+  }
+  console.log("   ✅ Users admin & prodi created");
 
   // ============================================================
-  // 2. SLOT WAKTU (5 hari x 4 sesi = 20 slot)
+  // 4. SLOT WAKTU
   // ============================================================
   console.log("📌 Seeding Slot Waktu...");
-
-  const slotData: { hari: Hari; jamMulai: string; jamSelesai: string }[] = [];
-  const hariKerja: Hari[] = [Hari.Senin, Hari.Selasa, Hari.Rabu, Hari.Kamis, Hari.Jumat];
-
+  const hariKerja: Hari[] = [Hari.Senin, Hari.Selasa, Hari.Rabu, Hari.Kamis, Hari.Jumat, Hari.Sabtu];
   const sesiNormal = [
-    { mulai: "08:00", selesai: "09:40" },
-    { mulai: "09:40", selesai: "11:20" },
-    { mulai: "13:00", selesai: "14:40" },
-    { mulai: "14:40", selesai: "16:20" },
+    { mulai: "07:30", selesai: "08:20" }, // Sesi 1
+    { mulai: "08:20", selesai: "09:10" }, // Sesi 2
+    { mulai: "09:10", selesai: "10:00" }, // Sesi 3
+    { mulai: "10:00", selesai: "10:50" }, // Sesi 4
+    { mulai: "10:50", selesai: "11:40" }, // Sesi 5
+    { mulai: "11:40", selesai: "12:30" }, // Sesi 6
+    // Istirahat 12:30 - 13:30
+    { mulai: "13:30", selesai: "14:20" }, // Sesi 7
+    { mulai: "14:20", selesai: "15:10" }, // Sesi 8
+    { mulai: "15:10", selesai: "16:00" }, // Sesi 9
+    { mulai: "16:00", selesai: "16:50" }, // Sesi 10
+    { mulai: "16:50", selesai: "17:40" }, // Sesi 11
   ];
 
-  const sesiJumat = [
-    { mulai: "08:00", selesai: "09:40" },
-    { mulai: "09:40", selesai: "11:20" },
-    { mulai: "14:00", selesai: "15:40" },
-    { mulai: "15:40", selesai: "17:20" },
-  ];
-
+  const slots: any[] = [];
   for (const hari of hariKerja) {
-    const sesiList = hari === Hari.Jumat ? sesiJumat : sesiNormal;
-    for (const sesi of sesiList) {
-      slotData.push({ hari, jamMulai: sesi.mulai, jamSelesai: sesi.selesai });
+    for (const sesi of sesiNormal) {
+      if (hari === Hari.Jumat && sesi.mulai === "11:40") {
+        continue; // Kosongkan sesi 6 khusus hari Jumat (Jumatan)
+      }
+      const s = await prisma.slotWaktu.upsert({
+        where: { hari_jamMulai_jamSelesai: { hari, jamMulai: sesi.mulai, jamSelesai: sesi.selesai } },
+        update: {},
+        create: { hari, jamMulai: sesi.mulai, jamSelesai: sesi.selesai },
+      });
+      slots.push(s);
+    }
+  }
+  console.log(`   ✅ ${slots.length} slot waktu created`);
+
+  // ============================================================
+  // 5. GEDUNG & RUANGAN
+  // ============================================================
+  console.log("📌 Seeding Gedung & Ruangan...");
+  await prisma.jadwalDetail.deleteMany({});
+  await prisma.ruangan.deleteMany({});
+  await prisma.gedung.deleteMany({});
+
+  const gedungC = await prisma.gedung.create({ data: { namaGedung: "Gedung C" } });
+  const gedungE = await prisma.gedung.create({ data: { namaGedung: "Gedung E" } });
+  const gedungR = await prisma.gedung.create({ data: { namaGedung: "Gedung Rektorat" } });
+
+  const ruanganData = [];
+
+  // Gedung C: 3 lantai, 10 ruangan per lantai
+  for (let lantai = 1; lantai <= 3; lantai++) {
+    for (let ruang = 1; ruang <= 10; ruang++) {
+      const ruangNum = ruang < 10 ? `0${ruang}` : `${ruang}`;
+      ruanganData.push({ namaRuangan: `R. C${lantai}${ruangNum}`, idGedung: gedungC.id, kapasitas: faker.helpers.arrayElement([30, 40, 50]) });
     }
   }
 
-  const slots: { id: number; hari: Hari; jamMulai: string; jamSelesai: string }[] = [];
-  for (const slot of slotData) {
-    const created = await prisma.slotWaktu.upsert({
-      where: {
-        hari_jamMulai_jamSelesai: {
-          hari: slot.hari,
-          jamMulai: slot.jamMulai,
-          jamSelesai: slot.jamSelesai,
-        },
-      },
-      update: {},
-      create: slot,
-    });
-    slots.push(created);
+  // Gedung E: 2 lantai, 14 ruangan per lantai
+  for (let lantai = 1; lantai <= 2; lantai++) {
+    for (let ruang = 1; ruang <= 14; ruang++) {
+      const ruangNum = ruang < 10 ? `0${ruang}` : `${ruang}`;
+      ruanganData.push({ namaRuangan: `R. E${lantai}${ruangNum}`, idGedung: gedungE.id, kapasitas: faker.helpers.arrayElement([30, 40, 50]) });
+    }
   }
 
-  console.log(`   ✅ ${slots.length} slot waktu created\n`);
+  // Gedung Rektorat: 3 ruangan
+  ruanganData.push({ namaRuangan: "Aula Rektorat", idGedung: gedungR.id, kapasitas: 100 });
+  ruanganData.push({ namaRuangan: "Ruang Sidang Utama", idGedung: gedungR.id, kapasitas: 50 });
+  ruanganData.push({ namaRuangan: "Ruang Rapat Senat", idGedung: gedungR.id, kapasitas: 40 });
+
+  await prisma.ruangan.createMany({ data: ruanganData });
+  console.log(`   ✅ ${ruanganData.length} Ruangan di 3 Gedung created`);
 
   // ============================================================
-  // 3. RUANGAN
-  // ============================================================
-  console.log("📌 Seeding Ruangan...");
-
-  // Delete existing to avoid duplicates on re-run
-  await prisma.jadwalDetail.deleteMany({});
-  await prisma.ruangan.deleteMany({});
-
-  const ruanganData = [
-    { namaRuangan: "R. 101", namaGedung: "Gedung C", kapasitas: 35 },
-    { namaRuangan: "R. 102", namaGedung: "Gedung C", kapasitas: 35 },
-    { namaRuangan: "R. 103", namaGedung: "Gedung C", kapasitas: 45 },
-    { namaRuangan: "R. 201", namaGedung: "Gedung B", kapasitas: 50 },
-    { namaRuangan: "R. 202", namaGedung: "Gedung B", kapasitas: 50 },
-    { namaRuangan: "Lab Komputer A", namaGedung: "Gedung C", kapasitas: 25 },
-    { namaRuangan: "Lab Komputer B", namaGedung: "Gedung C", kapasitas: 25 },
-    { namaRuangan: "Aula Mini", namaGedung: "Gedung Rektorat", kapasitas: 80 },
-  ];
-
-  const ruanganList: { id: number }[] = [];
-  for (const ruangan of ruanganData) {
-    const created = await prisma.ruangan.create({ data: ruangan });
-    ruanganList.push(created);
-  }
-
-  console.log(`   ✅ ${ruanganList.length} ruangan created\n`);
-
-  // ============================================================
-  // 4. DOSEN
+  // 6. DOSEN
   // ============================================================
   console.log("📌 Seeding Dosen...");
-
-  const dosenData = [
-    { nidn: "111111", namaDosen: "Dr. Ahmad, M.Kom" },
-    { nidn: "222222", namaDosen: "Budi Santoso, M.T" },
-    { nidn: "333333", namaDosen: "Citra Lestari, M.Cs" },
-    { nidn: "444444", namaDosen: "Dian Ayu, M.Kom" },
-    { nidn: "555555", namaDosen: "Eko Prabowo, M.T" },
-    { nidn: "666666", namaDosen: "Fahmi Reza, M.Kom" },
-    { nidn: "777777", namaDosen: "Gita Savitri, M.Pd" },
-  ];
-
-  const dosenList: { id: number; namaDosen: string }[] = [];
-  for (const dosen of dosenData) {
-    const created = await prisma.dosen.upsert({
-      where: { nidn: dosen.nidn },
-      update: {},
-      create: dosen,
-    });
-    dosenList.push(created);
+  await prisma.preferensiWaktuDosen.deleteMany({});
+  await prisma.dosen.deleteMany({});
+  
+  const dosenDataToInsert = [];
+  let nidnCounter = 100000;
+  for (const prodi of createdProdis) {
+    // 20 dosen per prodi (puluhan dosen)
+    for (let i = 0; i < 20; i++) {
+      dosenDataToInsert.push({
+        nidn: (nidnCounter++).toString(),
+        namaDosen: `${faker.person.firstName()} ${faker.person.lastName()}, ${faker.helpers.arrayElement(['M.Kom.', 'M.T.', 'M.Si.', 'Ph.D.', 'M.Pd.', 'M.M.', 'M.Kes.'])}`,
+        idProdi: prodi.id
+      });
+    }
   }
-
-  console.log(`   ✅ ${dosenList.length} dosen created\n`);
-
-  // Helper: find dosen by partial name
-  const findDosen = (keyword: string) => {
-    const d = dosenList.find((d) => d.namaDosen.toLowerCase().includes(keyword.toLowerCase()));
-    if (!d) throw new Error(`Dosen "${keyword}" tidak ditemukan`);
-    return d;
-  };
+  await prisma.dosen.createMany({ data: dosenDataToInsert });
+  console.log(`   ✅ ${dosenDataToInsert.length} Dosen created`);
 
   // ============================================================
-  // 5. MATA KULIAH
-  // ============================================================
-  console.log("📌 Seeding Mata Kuliah...");
-
-  const matkulData = [
-    { kodeMk: "TIF101", namaMk: "Algoritma & Pemrograman", sks: 2, semester: 1, jumlahMhs: 45, prodiId: prodiTi.id },
-    { kodeMk: "TIF102", namaMk: "Logika Informatika", sks: 2, semester: 1, jumlahMhs: 45, prodiId: prodiTi.id },
-    { kodeMk: "TIF103", namaMk: "Pengantar TI", sks: 2, semester: 1, jumlahMhs: 45, prodiId: prodiTi.id },
-    { kodeMk: "TIF104", namaMk: "Bahasa Inggris I", sks: 2, semester: 1, jumlahMhs: 45, prodiId: prodiTi.id },
-    { kodeMk: "TIF301", namaMk: "Struktur Data", sks: 2, semester: 3, jumlahMhs: 35, prodiId: prodiTi.id },
-    { kodeMk: "TIF302", namaMk: "Pemrograman Web", sks: 2, semester: 3, jumlahMhs: 35, prodiId: prodiTi.id },
-    { kodeMk: "TIF303", namaMk: "Basis Data", sks: 2, semester: 3, jumlahMhs: 35, prodiId: prodiTi.id },
-    { kodeMk: "TIF304", namaMk: "Jaringan Komputer Dasar", sks: 2, semester: 3, jumlahMhs: 35, prodiId: prodiTi.id },
-    { kodeMk: "TIF501", namaMk: "Kecerdasan Buatan", sks: 2, semester: 5, jumlahMhs: 25, prodiId: prodiTi.id },
-    { kodeMk: "TIF502", namaMk: "Rekayasa Perangkat Lunak", sks: 2, semester: 5, jumlahMhs: 25, prodiId: prodiTi.id },
-    { kodeMk: "TIF503", namaMk: "Pemrograman Mobile", sks: 2, semester: 5, jumlahMhs: 25, prodiId: prodiTi.id },
-    { kodeMk: "TIF701", namaMk: "Etika Profesi IT", sks: 2, semester: 7, jumlahMhs: 20, prodiId: prodiTi.id },
-    { kodeMk: "TIF702", namaMk: "Metodologi Penelitian", sks: 2, semester: 7, jumlahMhs: 20, prodiId: prodiTi.id },
-    { kodeMk: "TIF703", namaMk: "Kewirausahaan", sks: 2, semester: 7, jumlahMhs: 20, prodiId: prodiTi.id },
-  ];
-
-  for (const mk of matkulData) {
-    await prisma.mataKuliah.upsert({
-      where: { kodeMk: mk.kodeMk },
-      update: {},
-      create: {
-        kodeMk: mk.kodeMk,
-        namaMk: mk.namaMk,
-        sks: mk.sks,
-        semester: mk.semester,
-        jumlahMhs: mk.jumlahMhs,
-        idUserProdi: mk.prodiId,
-      },
-    });
-  }
-
-  console.log(`   ✅ ${matkulData.length} mata kuliah created\n`);
-
-  // ============================================================
-  // 6. PREFERENSI WAKTU DOSEN
+  // 6.5. PREFERENSI WAKTU DOSEN (Termasuk Sabtu)
   // ============================================================
   console.log("📌 Seeding Preferensi Waktu Dosen...");
-
-  const findSlotsByHari = (hari: Hari) => slots.filter((s) => s.hari === hari);
-  const findSlotByHariAndSesi = (hari: Hari, sesiIndex: number) => {
-    const hariSlots = findSlotsByHari(hari);
-    const slot = hariSlots[sesiIndex];
-    if (!slot) throw new Error(`Slot sesi ${sesiIndex} hari ${hari} tidak ditemukan`);
-    return slot;
-  };
-
-  const preferensiData: { idDosen: number; idSlotWaktu: number; status: StatusPreferensi }[] = [];
-
-  // Dr. Ahmad — Senin Pagi (Sesi 1 & 2) → UNAVAILABLE
-  const ahmad = findDosen("Ahmad");
-  preferensiData.push(
-    { idDosen: ahmad.id, idSlotWaktu: findSlotByHariAndSesi(Hari.Senin, 0).id, status: StatusPreferensi.UNAVAILABLE },
-    { idDosen: ahmad.id, idSlotWaktu: findSlotByHariAndSesi(Hari.Senin, 1).id, status: StatusPreferensi.UNAVAILABLE }
-  );
-
-  // Gita Savitri — Jumat Semua Sesi → UNAVAILABLE
-  const gita = findDosen("Gita");
-  const jumatSlots = findSlotsByHari(Hari.Jumat);
-  for (const slot of jumatSlots) {
-    preferensiData.push({ idDosen: gita.id, idSlotWaktu: slot.id, status: StatusPreferensi.UNAVAILABLE });
+  const allDosen = await prisma.dosen.findMany();
+  const allSlots = await prisma.slotWaktu.findMany();
+  
+  const sabtuSlots = allSlots.filter(s => s.hari === Hari.Sabtu);
+  const otherSlots = allSlots.filter(s => s.hari !== Hari.Sabtu);
+  
+  const preferensiData = [];
+  
+  for (const d of allDosen) {
+    // 70% dosen tidak bersedia mengajar di hari Sabtu
+    if (Math.random() < 0.70) {
+      for (const slot of sabtuSlots) {
+        preferensiData.push({
+          idDosen: d.id,
+          idSlotWaktu: slot.id,
+          status: StatusPreferensi.UNAVAILABLE
+        });
+      }
+    } else {
+      // Sisanya mungkin tidak bisa di 1 atau 2 sesi pada hari Sabtu
+      const randomSabtu = faker.helpers.arrayElements(sabtuSlots, faker.number.int({ min: 1, max: 2 }));
+      for (const slot of randomSabtu) {
+        preferensiData.push({
+          idDosen: d.id,
+          idSlotWaktu: slot.id,
+          status: StatusPreferensi.UNAVAILABLE
+        });
+      }
+    }
+    
+    // Constraint tambahan: 2-4 slot di hari biasa mereka juga tidak bisa mengajar
+    const randomOther = faker.helpers.arrayElements(otherSlots, faker.number.int({ min: 2, max: 4 }));
+    for (const slot of randomOther) {
+      preferensiData.push({
+        idDosen: d.id,
+        idSlotWaktu: slot.id,
+        status: StatusPreferensi.UNAVAILABLE
+      });
+    }
   }
-
-  // Dian Ayu — Selasa Siang (Sesi 3 & 4) → UNAVAILABLE
-  const dian = findDosen("Dian");
-  preferensiData.push(
-    { idDosen: dian.id, idSlotWaktu: findSlotByHariAndSesi(Hari.Selasa, 2).id, status: StatusPreferensi.UNAVAILABLE },
-    { idDosen: dian.id, idSlotWaktu: findSlotByHariAndSesi(Hari.Selasa, 3).id, status: StatusPreferensi.UNAVAILABLE }
-  );
-
-  // Eko Prabowo — Kamis Pagi Sesi 1 → UNAVAILABLE
-  const eko = findDosen("Eko");
-  preferensiData.push(
-    { idDosen: eko.id, idSlotWaktu: findSlotByHariAndSesi(Hari.Kamis, 0).id, status: StatusPreferensi.UNAVAILABLE }
-  );
-
-  for (const pref of preferensiData) {
-    await prisma.preferensiWaktuDosen.upsert({
-      where: {
-        idDosen_idSlotWaktu: {
-          idDosen: pref.idDosen,
-          idSlotWaktu: pref.idSlotWaktu,
-        },
-      },
-      update: {},
-      create: pref,
-    });
-  }
-
-  console.log(`   ✅ ${preferensiData.length} preferensi waktu dosen created\n`);
+  
+  await prisma.preferensiWaktuDosen.createMany({ data: preferensiData });
+  console.log(`   ✅ ${preferensiData.length} Preferensi Waktu Dosen (UNAVAILABLE) created.`);
 
   // ============================================================
-  // DONE
+  // 7. MATA KULIAH
   // ============================================================
-  console.log("🎉 Seeding selesai! Database siap digunakan.");
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log(`   Users:       3`);
-  console.log(`   Slot Waktu:  ${slots.length}`);
-  console.log(`   Ruangan:     ${ruanganList.length}`);
-  console.log(`   Dosen:       ${dosenList.length}`);
-  console.log(`   Mata Kuliah: ${matkulData.length}`);
-  console.log(`   Preferensi:  ${preferensiData.length}`);
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("📌 Seeding Mata Kuliah...");
+  await prisma.mataKuliah.deleteMany({});
+  const matkulDataToInsert = [];
+
+  for (const prodi of createdProdis) {
+    // 30 matkul per prodi (puluhan matkul)
+    for (let i = 1; i <= 30; i++) {
+      const semester = faker.number.int({ min: 1, max: 8 });
+      const mkPrefix = ['Pengantar', 'Sistem', 'Dasar-dasar', 'Teori', 'Praktikum', 'Aplikasi', 'Manajemen', 'Analisis', 'Metodologi', 'Seminar'];
+      const mkPrefixStr = faker.helpers.arrayElement(mkPrefix);
+      matkulDataToInsert.push({
+        kodeMk: `${prodi.kodeProdi}${100 + i}`,
+        namaMk: `${mkPrefixStr} ${faker.commerce.department()} ${i}`,
+        sks: faker.helpers.arrayElement([2, 3, 4]),
+        semester: semester,
+        jumlahMhs: faker.number.int({ min: 15, max: 45 }),
+        idProdi: prodi.id
+      });
+    }
+  }
+  await prisma.mataKuliah.createMany({ data: matkulDataToInsert });
+  console.log(`   ✅ ${matkulDataToInsert.length} Mata Kuliah created`);
+
+  console.log("\n🎉 Seeding selesai! Sistem siap digunakan dalam skala universitas.");
 }
 
 main()

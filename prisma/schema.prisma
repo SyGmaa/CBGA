@@ -56,12 +56,38 @@ model User {
   password String
   role     Role
 
-  mataKuliah MataKuliah[]
+  // Relation to Prodi (optional, mainly for Role.PRODI)
+  idProdi  Int?   @map("id_prodi")
+  prodi    Prodi? @relation(fields: [idProdi], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("users")
+}
+
+model Fakultas {
+  id           Int      @id @default(autoincrement())
+  namaFakultas String   @unique @map("nama_fakultas")
+  
+  prodi        Prodi[]
+
+  @@map("fakultas")
+}
+
+model Prodi {
+  id        Int    @id @default(autoincrement())
+  namaProdi String @map("nama_prodi")
+  kodeProdi String @unique @map("kode_prodi")
+
+  idFakultas Int      @map("id_fakultas")
+  fakultas   Fakultas @relation(fields: [idFakultas], references: [id])
+
+  users      User[]
+  mataKuliah MataKuliah[]
+  dosen      Dosen[] // Homebase dosen
+
+  @@map("prodi")
 }
 
 model SlotWaktu {
@@ -77,10 +103,21 @@ model SlotWaktu {
   @@map("slot_waktu")
 }
 
+model Gedung {
+  id         Int       @id @default(autoincrement())
+  namaGedung String    @unique @map("nama_gedung")
+  ruangan    Ruangan[]
+
+  @@map("gedung")
+}
+
 model Ruangan {
   id          Int    @id @default(autoincrement())
   namaRuangan String @map("nama_ruangan")
-  namaGedung  String @map("nama_gedung")
+  
+  idGedung    Int    @map("id_gedung")
+  gedung      Gedung @relation(fields: [idGedung], references: [id])
+  
   kapasitas   Int
 
   jadwalDetail JadwalDetail[]
@@ -96,8 +133,8 @@ model MataKuliah {
   semester  Int
   jumlahMhs Int    @map("jumlah_mhs")
 
-  idUserProdi Int  @map("id_user_prodi")
-  userProdi   User @relation(fields: [idUserProdi], references: [id])
+  idProdi   Int    @map("id_prodi")
+  prodi     Prodi  @relation(fields: [idProdi], references: [id])
 
   jadwalDetail JadwalDetail[]
 
@@ -108,6 +145,10 @@ model Dosen {
   id        Int    @id @default(autoincrement())
   nidn      String @unique
   namaDosen String @map("nama_dosen")
+
+  // Homebase Prodi (Optional)
+  idProdi   Int?   @map("id_prodi")
+  prodi     Prodi? @relation(fields: [idProdi], references: [id])
 
   preferensiWaktu PreferensiWaktuDosen[]
   jadwalDetail    JadwalDetail[]
