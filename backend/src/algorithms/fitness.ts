@@ -9,6 +9,7 @@ export interface Gen {
   idRuangan: number;
   idSlotWaktu: number;
   // Metadata for constraint checking
+  idProdi: number;
   semester: number;
   jumlahMhs: number;
   kapasitasRuangan: number;
@@ -92,14 +93,14 @@ export function calculateFitness(
         });
       }
 
-      // === Hard Constraint: Mahasiswa semester sama bentrok ===
-      if (gen1.semester === gen2.semester) {
+      // === Hard Constraint: Mahasiswa prodi & semester sama bentrok ===
+      if (gen1.idProdi === gen2.idProdi && gen1.semester === gen2.semester) {
         penalty += 100;
         conflicts.push({
           type: "SEMESTER_CLASH",
           genIndex1: i,
           genIndex2: j,
-          message: `Semester ${gen1.semester} bentrok di slot ${gen1.idSlotWaktu}`,
+          message: `Prodi ${gen1.idProdi} Semester ${gen1.semester} bentrok di slot ${gen1.idSlotWaktu}`,
         });
       }
     }

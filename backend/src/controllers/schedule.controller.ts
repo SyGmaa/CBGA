@@ -14,21 +14,28 @@ export function setIoInstance(io: any) {
 
 export async function generateSchedule(req: Request, res: Response) {
   try {
-    const { tahunAkademik, semesterTipe } = req.body;
+    const { tahunAkademik, semesterTipe, jumlahJadwal = 1, maxGenerasi = 500 } = req.body;
+    const requestedSchedules = Math.min(Number(jumlahJadwal) || 1, 1000);
+    const maxGenLimit = Math.min(Number(maxGenerasi) || 500, 2000);
 
     if (!tahunAkademik || !semesterTipe) {
       res.status(400).json({ error: "tahunAkademik dan semesterTipe harus diisi" });
       return;
     }
 
-    // Create JadwalMaster with GENERATING status
-    const jadwalMaster = await prisma.jadwalMaster.create({
-      data: {
-        tahunAkademik,
-        semesterTipe,
-        status: StatusJadwal.GENERATING,
-      },
-    });
+    // Create multiple JadwalMaster with GENERATING status
+    const masters = await prisma.$transaction(
+      Array.from({ length: requestedSchedules }).map((_, i) =>
+        prisma.jadwalMaster.create({
+          data: {
+            tahunAkademik: requestedSchedules > 1 ? `${tahunAkademik} (Alt ${i + 1})` : tahunAkademik,
+            semesterTipe,
+            status: StatusJadwal.GENERATING,
+          },
+        })
+      )
+    );
+    const jadwalMasterId = masters[0].id;
 
     // Fetch all required data
     const [mataKuliah, ruanganList, slotWaktuList, preferensiList] = await Promise.all([
@@ -43,16 +50,16 @@ export async function generateSchedule(req: Request, res: Response) {
     // Build matkul-dosen pairs (from seed data, each MK has a pre-assigned dosen)
     // In real scenario, this would come from a separate assignment table
     const jadwalDetails = await prisma.jadwalDetail.findMany({
-      where: { idJadwalMaster: jadwalMaster.id },
+      where: { idJadwalMaster: jadwalMasterId },
     });
 
     // For now, we need to get dosen assignments from the seed pattern
     // We'll fetch all MK and match with their typical dosen assignments
     const matkulDosenPairs = mataKuliah.map((mk) => {
-      // Default: assign dosen based on existing logic
       return {
         idMatkul: mk.id,
-        idDosen: 1, // Will be overridden by actual assignment
+        idDosen: 1,
+        idProdi: mk.idProdi,
         semester: mk.semester,
         jumlahMhs: mk.jumlahMhs,
       };
@@ -69,15 +76,30 @@ export async function generateSchedule(req: Request, res: Response) {
 
     const dosenList = await prisma.dosen.findMany();
     const dosenNidnMap = new Map(dosenList.map((d) => [d.nidn, d.id]));
+    const defaultDosenId = dosenList.length > 0 ? dosenList[0].id : 1;
 
+    // Group dosen by prodi for better distribution
+    const dosenByProdi: { [prodiId: number]: number[] } = {};
+    for (const d of dosenList) {
+      if (d.idProdi) {
+        if (!dosenByProdi[d.idProdi]) dosenByProdi[d.idProdi] = [];
+        dosenByProdi[d.idProdi].push(d.id);
+      }
+    }
+
+    // Distribute lecturers from the same prodi
+    const prodiDosenIndex: { [prodiId: number]: number } = {};
     for (const pair of matkulDosenPairs) {
-      const mk = mataKuliah.find((m) => m.id === pair.idMatkul);
-      if (mk) {
-        const nidn = dosenAssignments[mk.kodeMk];
-        if (nidn) {
-          const dosenId = dosenNidnMap.get(nidn);
-          if (dosenId) pair.idDosen = dosenId;
-        }
+      const prodiId = pair.idProdi;
+      const availableDosen = dosenByProdi[prodiId] || [];
+      
+      if (availableDosen.length > 0) {
+        // Use Round-Robin to distribute courses among lecturers in the same prodi
+        if (prodiDosenIndex[prodiId] === undefined) prodiDosenIndex[prodiId] = 0;
+        pair.idDosen = availableDosen[prodiDosenIndex[prodiId] % availableDosen.length];
+        prodiDosenIndex[prodiId]++;
+      } else {
+        pair.idDosen = defaultDosenId;
       }
     }
 
@@ -109,12 +131,13 @@ export async function generateSchedule(req: Request, res: Response) {
         ruanganKapasitasMap,
         preferensiMap,
         config: {
-          populationSize: 50,
-          maxGenerations: 1000,
+          populationSize: Math.max(50, requestedSchedules * 2),
+          maxGenerations: maxGenLimit,
           mutationRate: 0.03,
           crossoverRate: 0.8,
           elitismCount: 2,
           tournamentSize: 3,
+          jumlahJadwal: requestedSchedules,
         },
       },
       execArgv: ["--import", "tsx"],
@@ -125,7 +148,7 @@ export async function generateSchedule(req: Request, res: Response) {
         // Emit progress via Socket.io
         if (ioInstance) {
           ioInstance.emit("ga_progress", {
-            jadwalMasterId: jadwalMaster.id,
+            jadwalMasterId: jadwalMasterId,
             ...msg.data,
           });
         }
@@ -133,46 +156,46 @@ export async function generateSchedule(req: Request, res: Response) {
 
       if (msg.type === "completed") {
         try {
-          // Save results to database
-          const { kromosom, fitness, conflicts } = msg.data;
+          const { results } = msg.data;
+          
+          for (let i = 0; i < results.length; i++) {
+            const { kromosom, fitness, conflicts } = results[i];
+            const masterId = masters[i]?.id;
+            if (!masterId) break;
 
-          // Create JadwalDetail records
-          for (const gen of kromosom) {
-            await prisma.jadwalDetail.create({
-              data: {
-                idJadwalMaster: jadwalMaster.id,
-                idMatkul: gen.idMatkul,
-                idDosen: gen.idDosen,
-                idRuangan: gen.idRuangan,
-                idSlotWaktu: gen.idSlotWaktu,
-              },
+            const detailData = kromosom.map((gen: any) => ({
+              idJadwalMaster: masterId,
+              idMatkul: gen.idMatkul,
+              idDosen: gen.idDosen,
+              idRuangan: gen.idRuangan,
+              idSlotWaktu: gen.idSlotWaktu,
+            }));
+
+            // Use createMany for bulk insert!
+            await prisma.jadwalDetail.createMany({ data: detailData });
+
+            const status = conflicts.length === 0 ? StatusJadwal.FINAL : StatusJadwal.DRAFT;
+            await prisma.jadwalMaster.update({
+              where: { id: masterId },
+              data: { status, fitnessScore: fitness },
             });
           }
-
-          // Update JadwalMaster status
-          const status = conflicts.length === 0 ? StatusJadwal.FINAL : StatusJadwal.DRAFT;
-          await prisma.jadwalMaster.update({
-            where: { id: jadwalMaster.id },
-            data: {
-              status,
-              fitnessScore: fitness,
-            },
-          });
 
           if (ioInstance) {
             ioInstance.emit("ga_completed", {
-              jadwalMasterId: jadwalMaster.id,
-              fitness,
-              conflictCount: conflicts.length,
-              status,
+              jadwalMasterId: jadwalMasterId,
+              fitness: results[0].fitness,
+              conflictCount: results[0].conflicts.length,
+              status: results[0].conflicts.length === 0 ? StatusJadwal.FINAL : StatusJadwal.DRAFT,
             });
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("Error saving results:", error);
+          import('fs').then(fs => fs.writeFileSync('error.log', error.stack || String(error)));
           if (ioInstance) {
             ioInstance.emit("ga_error", {
-              jadwalMasterId: jadwalMaster.id,
-              error: "Gagal menyimpan hasil",
+              jadwalMasterId: jadwalMasterId,
+              error: `Gagal menyimpan hasil: ${error.message || String(error)}`,
             });
           }
         }
@@ -181,13 +204,15 @@ export async function generateSchedule(req: Request, res: Response) {
 
     worker.on("error", async (error) => {
       console.error("Worker error:", error);
-      await prisma.jadwalMaster.update({
-        where: { id: jadwalMaster.id },
-        data: { status: StatusJadwal.DRAFT },
-      });
+      for (const master of masters) {
+        await prisma.jadwalMaster.update({
+          where: { id: master.id },
+          data: { status: StatusJadwal.DRAFT },
+        });
+      }
       if (ioInstance) {
         ioInstance.emit("ga_error", {
-          jadwalMasterId: jadwalMaster.id,
+          jadwalMasterId: jadwalMasterId,
           error: error.message,
         });
       }
@@ -195,11 +220,11 @@ export async function generateSchedule(req: Request, res: Response) {
 
     res.status(202).json({
       message: "Proses generasi jadwal dimulai",
-      jadwalMasterId: jadwalMaster.id,
+      jadwalMasterId: jadwalMasterId,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Generate schedule error:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: error.message || "Internal server error", stack: error.stack });
   }
 }
 
@@ -210,9 +235,13 @@ export async function getResult(req: Request, res: Response) {
       include: {
         jadwalDetail: {
           include: {
-            mataKuliah: true,
+            mataKuliah: {
+              include: { prodi: { include: { fakultas: true } } }
+            },
             dosen: true,
-            ruangan: true,
+            ruangan: {
+              include: { gedung: true }
+            },
             slotWaktu: true,
           },
         },
@@ -270,6 +299,20 @@ export async function deleteSchedule(req: Request, res: Response) {
   try {
     await prisma.jadwalMaster.delete({ where: { id: Number(req.params.id) } });
     res.json({ message: "Jadwal berhasil dihapus" });
+  } catch (error) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+export async function bulkDeleteSchedules(req: Request, res: Response) {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: "ID jadwal tidak valid" });
+      return;
+    }
+    await prisma.jadwalMaster.deleteMany({ where: { id: { in: ids } } });
+    res.json({ message: `${ids.length} jadwal berhasil dihapus` });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
   }

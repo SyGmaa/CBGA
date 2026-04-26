@@ -25,6 +25,7 @@ interface WorkerInput {
   matkulDosenPairs: {
     idMatkul: number;
     idDosen: number;
+    idProdi: number;
     semester: number;
     jumlahMhs: number;
   }[];
@@ -39,6 +40,7 @@ interface WorkerInput {
     crossoverRate: number;
     elitismCount: number;
     tournamentSize: number;
+    jumlahJadwal: number;
   };
 }
 
@@ -165,14 +167,34 @@ for (let gen = 0; gen < config.maxGenerations; gen++) {
 // ============================================================
 // Final Result
 // ============================================================
-const finalResult = calculateFitness(bestEver.kromosom, preferensiMap);
+const uniqueResults: typeof population = [];
+const seen = new Set<string>();
+for (const ind of population) {
+  const hash = ind.kromosom.map(g => `${g.idMatkul}-${g.idDosen}-${g.idRuangan}-${g.idSlotWaktu}`).join('|');
+  if (!seen.has(hash)) {
+    seen.add(hash);
+    uniqueResults.push(ind);
+  }
+  if (uniqueResults.length >= config.jumlahJadwal) break;
+}
+
+while(uniqueResults.length < config.jumlahJadwal && population.length > 0) {
+    uniqueResults.push(population[0]!);
+}
+
+const topResults = uniqueResults.map(ind => {
+  const res = calculateFitness(ind.kromosom, preferensiMap);
+  return {
+    kromosom: ind.kromosom,
+    fitness: res.fitness,
+    penalty: res.penalty,
+    conflicts: res.conflicts,
+  };
+});
 
 parentPort?.postMessage({
   type: "completed",
   data: {
-    kromosom: bestEver.kromosom,
-    fitness: finalResult.fitness,
-    penalty: finalResult.penalty,
-    conflicts: finalResult.conflicts,
+    results: topResults
   },
 });

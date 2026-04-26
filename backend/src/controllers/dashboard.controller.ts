@@ -3,14 +3,23 @@ import prisma from "../services/prisma.ts";
 
 export async function getStats(req: Request, res: Response) {
   try {
-    const [totalMatkul, totalDosen, totalRuangan, totalSlotWaktu, totalJadwal] =
-      await Promise.all([
-        prisma.mataKuliah.count(),
-        prisma.dosen.count(),
-        prisma.ruangan.count(),
-        prisma.slotWaktu.count(),
-        prisma.jadwalMaster.count(),
-      ]);
+    const [
+      totalMatkul, 
+      totalDosen, 
+      totalRuangan, 
+      totalSlotWaktu, 
+      totalJadwal,
+      totalProdi,
+      totalGedung
+    ] = await Promise.all([
+      prisma.mataKuliah.count(),
+      prisma.dosen.count(),
+      prisma.ruangan.count(),
+      prisma.slotWaktu.count(),
+      prisma.jadwalMaster.count(),
+      prisma.prodi.count(),
+      prisma.gedung.count(),
+    ]);
 
     const latestJadwal = await prisma.jadwalMaster.findFirst({
       orderBy: { createdAt: "desc" },
@@ -24,13 +33,11 @@ export async function getStats(req: Request, res: Response) {
       },
     });
 
-    const prodiActivities = await prisma.user.findMany({
-      where: { role: "PRODI" },
+    const prodiActivities = await prisma.prodi.findMany({
       select: {
-        username: true,
-        updatedAt: true,
+        namaProdi: true,
+        kodeProdi: true,
       },
-      orderBy: { updatedAt: "desc" },
       take: 5,
     });
 
@@ -40,6 +47,8 @@ export async function getStats(req: Request, res: Response) {
       totalRuangan,
       totalSlotWaktu,
       totalJadwal,
+      totalProdi,
+      totalGedung,
       latestJadwal,
       prodiActivities,
     });

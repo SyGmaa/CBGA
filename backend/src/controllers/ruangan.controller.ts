@@ -4,10 +4,12 @@ import prisma from "../services/prisma.ts";
 export async function getAll(req: Request, res: Response) {
   try {
     const data = await prisma.ruangan.findMany({
-      orderBy: [{ namaGedung: "asc" }, { namaRuangan: "asc" }],
+      include: { gedung: true },
+      orderBy: [{ gedung: { namaGedung: "asc" } }, { namaRuangan: "asc" }],
     });
     res.json(data);
   } catch (error) {
+    console.error("GetAll Ruangan Error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -16,6 +18,7 @@ export async function getById(req: Request, res: Response) {
   try {
     const data = await prisma.ruangan.findUnique({
       where: { id: Number(req.params.id) },
+      include: { gedung: true },
     });
     if (!data) { res.status(404).json({ error: "Ruangan tidak ditemukan" }); return; }
     res.json(data);
@@ -26,22 +29,23 @@ export async function getById(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
-    const { namaRuangan, namaGedung, kapasitas } = req.body;
+    const { namaRuangan, idGedung, kapasitas } = req.body;
     const data = await prisma.ruangan.create({
-      data: { namaRuangan, namaGedung, kapasitas },
+      data: { namaRuangan, idGedung: Number(idGedung), kapasitas: Number(kapasitas) },
     });
     res.status(201).json(data);
   } catch (error) {
+    console.error("Create Ruangan Error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
 
 export async function update(req: Request, res: Response) {
   try {
-    const { namaRuangan, namaGedung, kapasitas } = req.body;
+    const { namaRuangan, idGedung, kapasitas } = req.body;
     const data = await prisma.ruangan.update({
       where: { id: Number(req.params.id) },
-      data: { namaRuangan, namaGedung, kapasitas },
+      data: { namaRuangan, idGedung: Number(idGedung), kapasitas: Number(kapasitas) },
     });
     res.json(data);
   } catch (error) {

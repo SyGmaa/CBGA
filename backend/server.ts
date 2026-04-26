@@ -13,6 +13,7 @@ import dosenRoutes from "./src/routes/dosen.routes.ts";
 import ruanganRoutes from "./src/routes/ruangan.routes.ts";
 import preferensiRoutes from "./src/routes/preferensi.routes.ts";
 import scheduleRoutes from "./src/routes/schedule.routes.ts";
+import masterRoutes from "./src/routes/master.routes.ts";
 
 // Socket
 import { setupSocket } from "./src/sockets/ga-socket.ts";
@@ -46,6 +47,7 @@ app.use("/api/dosen", dosenRoutes);
 app.use("/api/ruangan", ruanganRoutes);
 app.use("/api/preferensi", preferensiRoutes);
 app.use("/api/schedule", scheduleRoutes);
+app.use("/api/master", masterRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

@@ -4,11 +4,12 @@ import prisma from "../services/prisma.ts";
 export async function getAll(req: Request, res: Response) {
   try {
     const data = await prisma.mataKuliah.findMany({
-      include: { userProdi: { select: { id: true, username: true } } },
+      include: { prodi: { include: { fakultas: true } } },
       orderBy: [{ semester: "asc" }, { kodeMk: "asc" }],
     });
     res.json(data);
   } catch (error) {
+    console.error("GetAll Matkul Error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -17,7 +18,7 @@ export async function getById(req: Request, res: Response) {
   try {
     const data = await prisma.mataKuliah.findUnique({
       where: { id: Number(req.params.id) },
-      include: { userProdi: { select: { id: true, username: true } } },
+      include: { prodi: { include: { fakultas: true } } },
     });
     if (!data) { res.status(404).json({ error: "Mata kuliah tidak ditemukan" }); return; }
     res.json(data);
@@ -28,12 +29,13 @@ export async function getById(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
-    const { kodeMk, namaMk, sks, semester, jumlahMhs, idUserProdi } = req.body;
+    const { kodeMk, namaMk, sks, semester, jumlahMhs, idProdi } = req.body;
     const data = await prisma.mataKuliah.create({
-      data: { kodeMk, namaMk, sks, semester, jumlahMhs, idUserProdi },
+      data: { kodeMk, namaMk, sks: Number(sks), semester: Number(semester), jumlahMhs: Number(jumlahMhs), idProdi: Number(idProdi) },
     });
     res.status(201).json(data);
   } catch (error: any) {
+    console.error("Create Matkul Error:", error);
     if (error?.code === "P2002") {
       res.status(409).json({ error: "Kode MK sudah ada" });
       return;
@@ -44,10 +46,10 @@ export async function create(req: Request, res: Response) {
 
 export async function update(req: Request, res: Response) {
   try {
-    const { kodeMk, namaMk, sks, semester, jumlahMhs, idUserProdi } = req.body;
+    const { kodeMk, namaMk, sks, semester, jumlahMhs, idProdi } = req.body;
     const data = await prisma.mataKuliah.update({
       where: { id: Number(req.params.id) },
-      data: { kodeMk, namaMk, sks, semester, jumlahMhs, idUserProdi },
+      data: { kodeMk, namaMk, sks: Number(sks), semester: Number(semester), jumlahMhs: Number(jumlahMhs), idProdi: Number(idProdi) },
     });
     res.json(data);
   } catch (error) {

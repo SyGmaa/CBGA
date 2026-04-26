@@ -86,7 +86,7 @@ export function mutate(
  * Generate initial random chromosome
  */
 export function generateRandomKromosom(
-  matkulDosenPairs: { idMatkul: number; idDosen: number; semester: number; jumlahMhs: number }[],
+  matkulDosenPairs: { idMatkul: number; idDosen: number; idProdi: number; semester: number; jumlahMhs: number }[],
   allRuanganIds: number[],
   allSlotWaktuIds: number[],
   ruanganKapasitasMap: Map<number, number>
@@ -102,6 +102,7 @@ export function generateRandomKromosom(
       idDosen: pair.idDosen,
       idRuangan,
       idSlotWaktu,
+      idProdi: pair.idProdi,
       semester: pair.semester,
       jumlahMhs: pair.jumlahMhs,
       kapasitasRuangan: ruanganKapasitasMap.get(idRuangan) || 0,
