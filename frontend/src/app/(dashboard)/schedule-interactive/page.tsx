@@ -231,7 +231,7 @@ export default function InteractiveSchedulePage() {
       return false;
     }
 
-    const sks = item.mataKuliah?.sks || 1;
+    const sks = (item as any).sksTotal || item.mataKuliah?.sks || 1;
     const daySlots = slots
       .filter(s => s.hari === targetSlot.hari)
       .sort((a, b) => a.jamMulai.localeCompare(b.jamMulai));
@@ -394,7 +394,7 @@ export default function InteractiveSchedulePage() {
                             {courses.map((course) => {
                               const startIdx = getSlotIndex(course.slotWaktu?.jamMulai || "");
                               if (startIdx === -1) return null;
-                              const sks = course.mataKuliah?.sks || 1;
+                              const sks = course.sksTotal || course.mataKuliah?.sks || 1;
                               const left = startIdx * SLOT_WIDTH;
                               const width = sks * SLOT_WIDTH - 8;
                               const isConflicting = conflictMap.has(course.id);
