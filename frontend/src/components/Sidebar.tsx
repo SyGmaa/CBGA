@@ -10,6 +10,7 @@ const navItems = [
   { label: "Data Matkul", href: "/master/matkul", icon: "menu_book" },
   { label: "Preferensi Waktu", href: "/master/waktu", icon: "pending_actions" },
   { label: "Jadwal Perkuliahan", href: "/schedule", icon: "calendar_month" },
+  { label: "Interactive View", href: "/schedule-interactive", icon: "monitoring" },
 ];
 
 export default function Sidebar() {

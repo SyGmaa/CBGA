@@ -293,7 +293,7 @@ export async function getAllSchedules(req: Request, res: Response) {
 
 export async function updateSlot(req: Request, res: Response) {
   try {
-    const { idRuangan, idSlotWaktu } = req.body;
+    const { idRuangan, idSlotWaktu, detailIds } = req.body;
     const detailId = Number(req.params.detailId);
 
     // Fetch the detail to know which course and master schedule it belongs to
@@ -307,15 +307,23 @@ export async function updateSlot(req: Request, res: Response) {
       return;
     }
 
-    // Find all details for this course in this master schedule
-    const courseDetails = await prisma.jadwalDetail.findMany({
-      where: {
-        idJadwalMaster: targetDetail.idJadwalMaster,
-        idMatkul: targetDetail.idMatkul,
-        idDosen: targetDetail.idDosen,
-      },
-      orderBy: { idSlotWaktu: 'asc' }
-    });
+    // Find all details for this session in this master schedule
+    let courseDetails;
+    if (detailIds && Array.isArray(detailIds) && detailIds.length > 0) {
+      courseDetails = await prisma.jadwalDetail.findMany({
+        where: { id: { in: detailIds } },
+        orderBy: { idSlotWaktu: 'asc' }
+      });
+    } else {
+      courseDetails = await prisma.jadwalDetail.findMany({
+        where: {
+          idJadwalMaster: targetDetail.idJadwalMaster,
+          idMatkul: targetDetail.idMatkul,
+          idDosen: targetDetail.idDosen,
+        },
+        orderBy: { idSlotWaktu: 'asc' }
+      });
+    }
 
     // Find starting slot index in ordered list
     const allSlots = await prisma.slotWaktu.findMany({
