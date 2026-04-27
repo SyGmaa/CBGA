@@ -225,6 +225,12 @@ export default function InteractiveSchedulePage() {
     const targetSlot = slots.find(s => s.id === slotId);
     if (!targetSlot) return false;
 
+    // Pastikan kapasitas ruangan mencukupi
+    const room = rooms.find(r => r.id === roomId);
+    if (room && item.mataKuliah && room.kapasitas < (item.mataKuliah.jumlahMhs || 0)) {
+      return false;
+    }
+
     const sks = item.mataKuliah?.sks || 1;
     const daySlots = slots
       .filter(s => s.hari === targetSlot.hari)
@@ -247,7 +253,7 @@ export default function InteractiveSchedulePage() {
       }
     }
     return true;
-  }, [result, slots]);
+  }, [result, slots, rooms]);
 
   return (
     <div className="min-h-screen bg-surface-bright p-6 animate-fade-in">
