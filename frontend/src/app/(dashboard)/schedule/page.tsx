@@ -190,7 +190,7 @@ export default function SchedulePage() {
               <option value="" disabled>Pilih Jadwal Tersimpan</option>
               {schedules.map(s => (
                 <option key={s.id} value={s.id}>
-                  {s.tahunAkademik} {s.semesterTipe} - {s.status}
+                  {s.tahunAkademik} {s.semesterTipe} - {s.status} (Konflik: {s.conflictCount ?? 0})
                 </option>
               ))}
             </select>
@@ -468,7 +468,7 @@ export default function SchedulePage() {
                       />
                       <div className="flex-1">
                         <p className="text-sm font-semibold text-on-surface">{s.tahunAkademik} - {s.semesterTipe}</p>
-                        <p className="text-xs text-on-surface-variant">Status: {s.status}</p>
+                        <p className="text-xs text-on-surface-variant">Status: {s.status} • Konflik: {s.conflictCount ?? 0}</p>
                       </div>
                     </li>
                   ))}

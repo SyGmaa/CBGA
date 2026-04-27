@@ -175,6 +175,7 @@ model JadwalMaster {
   semesterTipe  SemesterTipe @map("semester_tipe")
   status        StatusJadwal @default(DRAFT)
   fitnessScore  Float?       @map("fitness_score")
+  conflictCount Int          @default(0) @map("conflict_count")
 
   jadwalDetail JadwalDetail[]
 

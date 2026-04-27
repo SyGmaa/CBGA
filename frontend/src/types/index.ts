@@ -85,6 +85,7 @@ export interface JadwalMaster {
   semesterTipe: SemesterTipe;
   status: StatusJadwal;
   fitnessScore: number | null;
+  conflictCount?: number;
   createdAt: string;
   jadwalDetail?: JadwalDetail[];
   _count?: { jadwalDetail: number };

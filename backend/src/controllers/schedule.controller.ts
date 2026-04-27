@@ -195,7 +195,7 @@ export async function generateSchedule(req: Request, res: Response) {
             const status = conflicts.length === 0 ? StatusJadwal.FINAL : StatusJadwal.DRAFT;
             await prisma.jadwalMaster.update({
               where: { id: masterId },
-              data: { status, fitnessScore: fitness },
+              data: { status, fitnessScore: fitness, conflictCount: conflicts.length },
             });
           }
 
@@ -366,7 +366,7 @@ export async function updateSlot(req: Request, res: Response) {
       include: { mataKuliah: true }
     });
 
-    let hasConflicts = false;
+    let conflictCount = 0;
     for (let i = 0; i < allDetails.length; i++) {
       for (let j = i + 1; j < allDetails.length; j++) {
         const d1 = allDetails[i];
@@ -378,16 +378,14 @@ export async function updateSlot(req: Request, res: Response) {
         const isSemesterClash = d1.mataKuliah?.idProdi === d2.mataKuliah?.idProdi && d1.mataKuliah?.semester === d2.mataKuliah?.semester;
 
         if (isRoomClash || isDosenClash || isSemesterClash) {
-          hasConflicts = true;
-          break;
+          conflictCount++;
         }
       }
-      if (hasConflicts) break;
     }
 
     await prisma.jadwalMaster.update({
       where: { id: masterId },
-      data: { status: hasConflicts ? StatusJadwal.DRAFT : StatusJadwal.FINAL }
+      data: { status: conflictCount > 0 ? StatusJadwal.DRAFT : StatusJadwal.FINAL, conflictCount }
     });
 
     res.json(updatedMaster?.jadwalDetail[0]);
