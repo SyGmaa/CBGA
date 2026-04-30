@@ -8,7 +8,8 @@ const navItems = [
   { label: "Data Ruangan", href: "/master/ruangan", icon: "meeting_room" },
   { label: "Data Dosen", href: "/master/dosen", icon: "person" },
   { label: "Data Matkul", href: "/master/matkul", icon: "menu_book" },
-  { label: "Preferensi Waktu", href: "/master/waktu", icon: "pending_actions" },
+  { label: "Slot Waktu", href: "/master/waktu", icon: "schedule" },
+  { label: "Preferensi Dosen", href: "/master/preferensi", icon: "pending_actions" },
   { label: "Jadwal Perkuliahan", href: "/schedule", icon: "calendar_month" },
   { label: "Interactive View", href: "/schedule-interactive", icon: "monitoring" },
 ];
