@@ -133,7 +133,7 @@ export async function generateSchedule(req: Request, res: Response) {
       workerData: {
         matkulDosenPairs,
         allRuanganIds,
-        allSlotWaktu: slotWaktuList.map(s => ({ id: s.id, hari: s.hari })),
+        allSlotWaktu: slotWaktuList.map(s => ({ id: s.id, hari: s.hari, jamMulai: s.jamMulai, jamSelesai: s.jamSelesai })),
         ruanganKapasitasMap,
         preferensiMap,
         config: {

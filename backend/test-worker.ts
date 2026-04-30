@@ -35,7 +35,7 @@ async function main() {
     workerData: {
       matkulDosenPairs,
       allRuanganIds: ruanganList.map((r) => r.id),
-      allSlotWaktuIds: slotWaktuList.map((s) => s.id),
+      allSlotWaktu: slotWaktuList.map((s) => ({ id: s.id, hari: s.hari, jamMulai: s.jamMulai, jamSelesai: s.jamSelesai })),
       ruanganKapasitasMap,
       preferensiMap,
       config: {

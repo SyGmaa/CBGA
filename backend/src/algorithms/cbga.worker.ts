@@ -31,7 +31,7 @@ interface WorkerInput {
     sks: number;
   }[];
   allRuanganIds: number[];
-  allSlotWaktu: { id: number; hari: string }[];
+  allSlotWaktu: { id: number; hari: string; jamMulai: string; jamSelesai: string }[];
   ruanganKapasitasMap: [number, number][]; // serialized Map
   preferensiMap: { [dosenId: number]: number[] }; // serialized
   config: {
@@ -69,7 +69,7 @@ const slotInfoMap = new Map<number, SlotInfo>();
 const allSlotIdsOrdered: number[] = [];
 
 allSlotWaktu.forEach((s, index) => {
-  slotInfoMap.set(s.id, { id: s.id, hari: s.hari, urutan: index });
+  slotInfoMap.set(s.id, { id: s.id, hari: s.hari, urutan: index, jamMulai: s.jamMulai, jamSelesai: s.jamSelesai });
   allSlotIdsOrdered.push(s.id);
 });
 

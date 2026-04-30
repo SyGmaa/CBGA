@@ -22,6 +22,8 @@ export interface SlotInfo {
   id: number;
   hari: string;
   urutan: number; // Order in the day
+  jamMulai: string; // e.g. "10:50"
+  jamSelesai: string; // e.g. "11:40"
 }
 
 export interface PreferensiMap {
@@ -35,7 +37,7 @@ export interface FitnessResult {
 }
 
 export interface ConflictDetail {
-  type: "DOSEN_CLASH" | "RUANGAN_CLASH" | "SEMESTER_CLASH" | "KAPASITAS" | "PREFERENSI" | "DAY_OVERFLOW";
+  type: "DOSEN_CLASH" | "RUANGAN_CLASH" | "SEMESTER_CLASH" | "KAPASITAS" | "PREFERENSI" | "DAY_OVERFLOW" | "BREAK_CROSSING";
   genIndex1: number;
   genIndex2?: number;
   message: string;
@@ -81,6 +83,27 @@ export function calculateFitness(
       if (lastSlot && lastSlot.hari !== startSlot.hari) {
         penalty += 100;
         conflicts.push({ type: "DAY_OVERFLOW", genIndex1: i, message: `MK idx ${i}: durasi melompati hari` });
+      }
+    }
+
+    // 2b. Break Crossing — jadwal tidak boleh melewati jam istirahat
+    // Cek apakah slot-slot yang berurutan benar-benar kontinu (jamSelesai slot N == jamMulai slot N+1)
+    if (occupied.length > 1) {
+      for (let k = 0; k < occupied.length - 1; k++) {
+        const currentSlotInfo = slotInfoMap.get(occupied[k]!);
+        const nextSlotInfo = slotInfoMap.get(occupied[k + 1]!);
+        if (currentSlotInfo && nextSlotInfo) {
+          // Jika jamSelesai slot saat ini != jamMulai slot berikutnya, berarti ada break di antaranya
+          if (currentSlotInfo.jamSelesai !== nextSlotInfo.jamMulai) {
+            penalty += 100;
+            conflicts.push({
+              type: "BREAK_CROSSING",
+              genIndex1: i,
+              message: `MK idx ${i}: jadwal melewati jam istirahat (${currentSlotInfo.jamSelesai} -> ${nextSlotInfo.jamMulai})`
+            });
+            break; // Satu pelanggaran per gen sudah cukup
+          }
+        }
       }
     }
 

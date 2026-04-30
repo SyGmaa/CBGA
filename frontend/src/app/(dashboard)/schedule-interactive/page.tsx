@@ -111,6 +111,7 @@ export default function InteractiveSchedulePage() {
           const lastIdx = daySlots.findIndex(s => s.id === lastSlotId);
           const nextIdx = daySlots.findIndex(s => s.id === next.idSlotWaktu);
           
+          // Check consecutive in slot order
           if (nextIdx === lastIdx + 1) {
             session.sksTotal += 1;
             session.slotIds.push(next.idSlotWaktu);
@@ -131,9 +132,29 @@ export default function InteractiveSchedulePage() {
     if (sessions.length === 0) return map;
 
     for (let i = 0; i < sessions.length; i++) {
+      const s1 = sessions[i];
+
+      // 2a. Break Crossing Detection — check if this session's slots cross a break
+      if (s1.slotIds.length > 1) {
+        const daySlots = slots
+          .filter(s => s.hari === s1.slotWaktu?.hari)
+          .sort((a, b) => a.jamMulai.localeCompare(b.jamMulai));
+        
+        for (let k = 0; k < s1.slotIds.length - 1; k++) {
+          const currentSlot = daySlots.find(s => s.id === s1.slotIds[k]);
+          const nextSlot = daySlots.find(s => s.id === s1.slotIds[k + 1]);
+          if (currentSlot && nextSlot && currentSlot.jamSelesai !== nextSlot.jamMulai) {
+            const existing = map.get(s1.id) || [];
+            existing.push(`Melewati Jam Istirahat: jadwal tidak boleh melewati break (${currentSlot.jamSelesai} → ${nextSlot.jamMulai})`);
+            map.set(s1.id, existing);
+            break;
+          }
+        }
+      }
+
+      // 2b. Standard Clash Detection
       for (let j = 0; j < sessions.length; j++) {
         if (i === j) continue; // Skip self
-        const s1 = sessions[i];
         const s2 = sessions[j];
 
         // Only check if they are on the same day
@@ -158,7 +179,7 @@ export default function InteractiveSchedulePage() {
       }
     }
     return map;
-  }, [sessions]);
+  }, [sessions, slots]);
 
   // 3. Organized data for UI: Day -> Room -> Sessions
   const organizedData = useMemo(() => {
@@ -240,6 +261,14 @@ export default function InteractiveSchedulePage() {
     if (startIdx === -1 || (startIdx + sks) > daySlots.length) return false;
 
     const targetSlotIds = daySlots.slice(startIdx, startIdx + sks).map(s => s.id);
+
+    // Check Break Crossing: ensure no time gap between consecutive target slots
+    const targetSlotRange = daySlots.slice(startIdx, startIdx + sks);
+    for (let k = 0; k < targetSlotRange.length - 1; k++) {
+      if (targetSlotRange[k].jamSelesai !== targetSlotRange[k + 1].jamMulai) {
+        return false; // Would cross a break period
+      }
+    }
     
     for (const other of result.jadwalDetail) {
       if ((item.detailIds && item.detailIds.includes(other.id)) || other.id === item.id) continue;

@@ -111,6 +111,14 @@ export default function SchedulePage() {
 
     // 2. Check Multi-slot Conflicts: Check all slots the item will occupy
     const targetSlotIds = daySlots.slice(startIdx, startIdx + sks).map(s => s.id);
+
+    // 2b. Check Break Crossing: ensure no time gap between consecutive target slots
+    const targetSlotRange = daySlots.slice(startIdx, startIdx + sks);
+    for (let k = 0; k < targetSlotRange.length - 1; k++) {
+      if (targetSlotRange[k].jamSelesai !== targetSlotRange[k + 1].jamMulai) {
+        return false; // Would cross a break period
+      }
+    }
     
     for (const other of result.jadwalDetail) {
       // Skip self and its other slots
