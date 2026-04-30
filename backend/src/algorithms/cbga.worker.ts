@@ -13,8 +13,9 @@ import {
 } from "./fitness.ts";
 import {
   tournamentSelection,
-  singlePointCrossover,
+  hybridCrossover,
   mutate,
+  repairKromosom,
   generateRandomKromosom,
 } from "./operators.ts";
 
@@ -74,7 +75,19 @@ allSlotWaktu.forEach((s, index) => {
 });
 
 // ============================================================
-// Initialize Population
+// Adaptive Parameters
+// ============================================================
+let currentMutationRate = config.mutationRate;
+const MIN_MUTATION_RATE = config.mutationRate;
+const MAX_MUTATION_RATE = 0.25;
+const STAGNATION_THRESHOLD = 50; // generations without improvement
+const IMMIGRATION_RATIO = 0.2; // replace 20% of worst on stagnation
+
+let stagnationCounter = 0;
+let lastBestFitness = 0;
+
+// ============================================================
+// Initialize Population (Smart Initialization)
 // ============================================================
 let population: { kromosom: Kromosom; fitness: number; penalty: number }[] = [];
 
@@ -83,7 +96,9 @@ for (let i = 0; i < config.populationSize; i++) {
     matkulDosenPairs,
     allRuanganIds,
     allSlotIdsOrdered,
-    ruanganKapasitasMap
+    ruanganKapasitasMap,
+    slotInfoMap,
+    preferensiMap
   );
   const result = calculateFitness(kromosom, preferensiMap, slotInfoMap, allSlotIdsOrdered);
   population.push({
@@ -97,6 +112,7 @@ for (let i = 0; i < config.populationSize; i++) {
 population.sort((a, b) => b.fitness - a.fitness);
 
 let bestEver = population[0]!;
+lastBestFitness = bestEver.fitness;
 
 // ============================================================
 // Evolution Loop
@@ -109,7 +125,7 @@ for (let gen = 0; gen < config.maxGenerations; gen++) {
     newPopulation.push(population[i]!);
   }
 
-  // Fill rest with crossover + mutation
+  // Fill rest with crossover + mutation + repair
   while (newPopulation.length < config.populationSize) {
     const parent1 = tournamentSelection(population, config.tournamentSize);
     const parent2 = tournamentSelection(population, config.tournamentSize);
@@ -118,15 +134,19 @@ for (let gen = 0; gen < config.maxGenerations; gen++) {
     let child2: Kromosom;
 
     if (Math.random() < config.crossoverRate) {
-      [child1, child2] = singlePointCrossover(parent1, parent2);
+      [child1, child2] = hybridCrossover(parent1, parent2);
     } else {
       child1 = parent1.map((g) => ({ ...g }));
       child2 = parent2.map((g) => ({ ...g }));
     }
 
-    // Mutation
-    child1 = mutate(child1, allRuanganIds, allSlotIdsOrdered, ruanganKapasitasMap, config.mutationRate);
-    child2 = mutate(child2, allRuanganIds, allSlotIdsOrdered, ruanganKapasitasMap, config.mutationRate);
+    // Conflict-directed mutation with adaptive rate
+    child1 = mutate(child1, allRuanganIds, allSlotIdsOrdered, ruanganKapasitasMap, currentMutationRate, slotInfoMap, preferensiMap);
+    child2 = mutate(child2, allRuanganIds, allSlotIdsOrdered, ruanganKapasitasMap, currentMutationRate, slotInfoMap, preferensiMap);
+
+    // Repair operator — fix hard constraints via local search
+    child1 = repairKromosom(child1, allRuanganIds, allSlotIdsOrdered, ruanganKapasitasMap, slotInfoMap, preferensiMap);
+    child2 = repairKromosom(child2, allRuanganIds, allSlotIdsOrdered, ruanganKapasitasMap, slotInfoMap, preferensiMap);
 
     const result1 = calculateFitness(child1, preferensiMap, slotInfoMap, allSlotIdsOrdered);
     const result2 = calculateFitness(child2, preferensiMap, slotInfoMap, allSlotIdsOrdered);
@@ -154,6 +174,51 @@ for (let gen = 0; gen < config.maxGenerations; gen++) {
     bestEver = currentBest;
   }
 
+  // ============================================================
+  // Adaptive Mutation Rate & Stagnation Handling
+  // ============================================================
+  if (bestEver.fitness > lastBestFitness) {
+    // Improvement found — decrease mutation rate
+    lastBestFitness = bestEver.fitness;
+    stagnationCounter = 0;
+    currentMutationRate = Math.max(MIN_MUTATION_RATE, currentMutationRate * 0.9);
+  } else {
+    stagnationCounter++;
+    // Gradually increase mutation rate during stagnation
+    currentMutationRate = Math.min(MAX_MUTATION_RATE, currentMutationRate * 1.05);
+  }
+
+  // Immigration: replace worst 20% with fresh smart-initialized chromosomes
+  if (stagnationCounter > 0 && stagnationCounter % STAGNATION_THRESHOLD === 0) {
+    const immigrantCount = Math.floor(config.populationSize * IMMIGRATION_RATIO);
+    for (let i = 0; i < immigrantCount; i++) {
+      const replaceIdx = config.populationSize - 1 - i;
+      if (replaceIdx <= config.elitismCount) break; // Don't replace elite
+
+      const newKromosom = generateRandomKromosom(
+        matkulDosenPairs,
+        allRuanganIds,
+        allSlotIdsOrdered,
+        ruanganKapasitasMap,
+        slotInfoMap,
+        preferensiMap
+      );
+      const repairedKromosom = repairKromosom(newKromosom, allRuanganIds, allSlotIdsOrdered, ruanganKapasitasMap, slotInfoMap, preferensiMap);
+      const result = calculateFitness(repairedKromosom, preferensiMap, slotInfoMap, allSlotIdsOrdered);
+      population[replaceIdx] = {
+        kromosom: repairedKromosom,
+        fitness: result.fitness,
+        penalty: result.penalty,
+      };
+    }
+
+    population.sort((a, b) => b.fitness - a.fitness);
+    const newBest = population[0]!;
+    if (newBest.fitness > bestEver.fitness) {
+      bestEver = newBest;
+    }
+  }
+
   // Report progress every 10 generations
   if (gen % 10 === 0 || gen === config.maxGenerations - 1) {
     parentPort?.postMessage({
@@ -164,6 +229,8 @@ for (let gen = 0; gen < config.maxGenerations; gen++) {
         bestFitness: bestEver.fitness,
         bestPenalty: bestEver.penalty,
         currentFitness: currentBest.fitness,
+        mutationRate: currentMutationRate,
+        stagnation: stagnationCounter,
         status: bestEver.fitness === 1 ? "Optimal ditemukan!" : "Evolusi...",
       },
     });
