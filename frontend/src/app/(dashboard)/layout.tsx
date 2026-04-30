@@ -37,16 +37,16 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="fixed inset-0 flex overflow-hidden bg-background">
       <Sidebar />
 
       <div
-        className={`flex-1 flex flex-col relative h-full transition-all duration-300 ${
+        className={`flex-1 flex flex-col h-full transition-[margin] duration-300 ${
           sidebarOpen ? "ml-72" : "ml-0 lg:ml-72"
         }`}
       >
         {/* TopAppBar (Navbar) */}
-        <header className="fixed top-0 right-0 w-full lg:w-[calc(100%-18rem)] z-40 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm flex items-center justify-between px-8 h-16 font-['Inter'] text-sm transition-all duration-300">
+        <header className="fixed top-0 right-0 w-full lg:w-[calc(100%-18rem)] z-40 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm flex items-center justify-between px-8 h-16 font-['Inter'] text-sm transition-[width,margin] duration-300">
           <div className="flex-1 flex items-center gap-4">
             <button
               onClick={toggleSidebar}
