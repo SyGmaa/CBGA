@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { connectSocket, disconnectSocket } from "@/lib/socket";
 import { useAppStore } from "@/store/useAppStore";
-import type { JadwalMaster, JadwalDetail, GAProgress, SlotWaktu, Ruangan } from "@/types";
+import type { JadwalMaster, JadwalDetail, GAProgress, SlotWaktu, Ruangan, PreferensiWaktuDosen } from "@/types";
 
 const HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const SLOT_WIDTH = 160; // px
@@ -38,6 +38,23 @@ export default function InteractiveSchedulePage() {
     queryKey: ["ruangan"],
     queryFn: () => api.getRuangan() as Promise<Ruangan[]>
   });
+
+  const { data: preferensiList = [] } = useQuery<PreferensiWaktuDosen[]>({
+    queryKey: ["preferensi"],
+    queryFn: () => api.getPreferensi() as Promise<PreferensiWaktuDosen[]>
+  });
+
+  // Build preferensi lookup: dosenId -> Set of unavailable slotWaktu IDs
+  const preferensiMap = useMemo(() => {
+    const map = new Map<number, Set<number>>();
+    for (const p of preferensiList) {
+      if (p.status === "UNAVAILABLE") {
+        if (!map.has(p.idDosen)) map.set(p.idDosen, new Set());
+        map.get(p.idDosen)!.add(p.idSlotWaktu);
+      }
+    }
+    return map;
+  }, [preferensiList]);
 
   const updateSlotMut = useMutation({
     mutationFn: ({ detailId, data }: { detailId: number; data: any }) => api.updateScheduleSlot(detailId, data),
@@ -126,15 +143,22 @@ export default function InteractiveSchedulePage() {
     return results;
   }, [result, slots]);
 
-  // 2. Conflict Map: Based on Sessions
+  // 2. Conflict Map: Based on Sessions — matches backend fitness.ts logic
   const conflictMap = useMemo(() => {
     const map = new Map<number, string[]>();
     if (sessions.length === 0) return map;
 
+    // Helper: add conflict reasons to ALL detail IDs in a session
+    const addConflict = (sessionId: number, reason: string) => {
+      const existing = map.get(sessionId) || [];
+      if (!existing.includes(reason)) existing.push(reason);
+      map.set(sessionId, existing);
+    };
+
     for (let i = 0; i < sessions.length; i++) {
       const s1 = sessions[i];
 
-      // 2a. Break Crossing Detection — check if this session's slots cross a break
+      // 2a. Break Crossing Detection
       if (s1.slotIds.length > 1) {
         const daySlots = slots
           .filter(s => s.hari === s1.slotWaktu?.hari)
@@ -144,42 +168,71 @@ export default function InteractiveSchedulePage() {
           const currentSlot = daySlots.find(s => s.id === s1.slotIds[k]);
           const nextSlot = daySlots.find(s => s.id === s1.slotIds[k + 1]);
           if (currentSlot && nextSlot && currentSlot.jamSelesai !== nextSlot.jamMulai) {
-            const existing = map.get(s1.id) || [];
-            existing.push(`Melewati Jam Istirahat: jadwal tidak boleh melewati break (${currentSlot.jamSelesai} → ${nextSlot.jamMulai})`);
-            map.set(s1.id, existing);
+            addConflict(s1.id, `Melewati Jam Istirahat (${currentSlot.jamSelesai} → ${nextSlot.jamMulai})`);
             break;
           }
         }
       }
 
-      // 2b. Standard Clash Detection
-      for (let j = 0; j < sessions.length; j++) {
-        if (i === j) continue; // Skip self
+      // 2b. Kapasitas Detection
+      const room = rooms.find(r => r.id === s1.idRuangan);
+      if (room && s1.mataKuliah && room.kapasitas < (s1.mataKuliah.jumlahMhs || 0)) {
+        addConflict(s1.id, `Kapasitas Ruangan tidak cukup (${room.kapasitas} < ${s1.mataKuliah.jumlahMhs} mhs)`);
+      }
+
+      // 2b2. Day Overflow Detection
+      if (s1.slotIds.length > 1) {
+        const firstSlot = slots.find(s => s.id === s1.slotIds[0]);
+        const lastSlot = slots.find(s => s.id === s1.slotIds[s1.slotIds.length - 1]);
+        if (firstSlot && lastSlot && firstSlot.hari !== lastSlot.hari) {
+          addConflict(s1.id, `Durasi melewati hari (${firstSlot.hari} → ${lastSlot.hari})`);
+        }
+      }
+
+      // 2b3. Preferensi Dosen Detection
+      const unavailable = preferensiMap.get(s1.idDosen);
+      if (unavailable) {
+        for (const slotId of s1.slotIds) {
+          if (unavailable.has(slotId)) {
+            const slotInfo = slots.find(s => s.id === slotId);
+            addConflict(s1.id, `Preferensi Dosen: ${s1.dosen?.namaDosen} tidak tersedia di ${slotInfo?.hari} ${slotInfo?.jamMulai}`);
+            break;
+          }
+        }
+      }
+
+      // 2c. Standard Clash Detection — compare with ALL other sessions
+      for (let j = i + 1; j < sessions.length; j++) {
         const s2 = sessions[j];
 
-        // Only check if they are on the same day
-        if (s1.slotWaktu?.hari !== s2.slotWaktu?.hari) continue;
-
-        // Check if any slot IDs overlap
+        // Check if any slot IDs overlap (slot IDs are globally unique, so this works across days too)
         const hasOverlap = s1.slotIds.some(id => s2.slotIds.includes(id));
+        if (!hasOverlap) continue;
 
-        if (hasOverlap) {
-          const reasons: string[] = [];
-          if (s1.idRuangan === s2.idRuangan) reasons.push(`Bentrok Ruangan: ${s2.mataKuliah?.namaMk} menggunakan ruangan yang sama`);
-          if (s1.idDosen === s2.idDosen) reasons.push(`Bentrok Dosen: ${s1.dosen?.namaDosen} mengajar di waktu yang sama`);
-          if (s1.mataKuliah?.idProdi === s2.mataKuliah?.idProdi && s1.mataKuliah?.semester === s2.mataKuliah?.semester) {
-            reasons.push(`Bentrok Kelas: Semester ${s1.mataKuliah?.semester} Prodi ${s1.mataKuliah?.prodi?.namaProdi} memiliki kuliah lain`);
-          }
+        const reasons1: string[] = [];
+        const reasons2: string[] = [];
 
-          if (reasons.length > 0) {
-            const existing = map.get(s1.id) || [];
-            map.set(s1.id, Array.from(new Set([...existing, ...reasons])));
-          }
+        if (s1.idRuangan === s2.idRuangan) {
+          reasons1.push(`Bentrok Ruangan: ${s2.mataKuliah?.namaMk} menggunakan ruangan yang sama`);
+          reasons2.push(`Bentrok Ruangan: ${s1.mataKuliah?.namaMk} menggunakan ruangan yang sama`);
+        }
+        if (s1.idDosen === s2.idDosen) {
+          reasons1.push(`Bentrok Dosen: ${s1.dosen?.namaDosen} mengajar ${s2.mataKuliah?.namaMk} di waktu yang sama`);
+          reasons2.push(`Bentrok Dosen: ${s2.dosen?.namaDosen} mengajar ${s1.mataKuliah?.namaMk} di waktu yang sama`);
+        }
+        if (s1.mataKuliah?.idProdi === s2.mataKuliah?.idProdi && s1.mataKuliah?.semester === s2.mataKuliah?.semester) {
+          reasons1.push(`Bentrok Semester: Semester ${s1.mataKuliah?.semester} Prodi ${s1.mataKuliah?.prodi?.namaProdi} memiliki kuliah lain`);
+          reasons2.push(`Bentrok Semester: Semester ${s2.mataKuliah?.semester} Prodi ${s2.mataKuliah?.prodi?.namaProdi} memiliki kuliah lain`);
+        }
+
+        if (reasons1.length > 0) {
+          reasons1.forEach(r => addConflict(s1.id, r));
+          reasons2.forEach(r => addConflict(s2.id, r));
         }
       }
     }
     return map;
-  }, [sessions, slots]);
+  }, [sessions, slots, rooms, preferensiMap]);
 
   // 3. Organized data for UI: Day -> Room -> Sessions
   const organizedData = useMemo(() => {

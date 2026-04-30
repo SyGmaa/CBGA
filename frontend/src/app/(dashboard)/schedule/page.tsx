@@ -1,10 +1,10 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { connectSocket, disconnectSocket } from "@/lib/socket";
 import { useAppStore } from "@/store/useAppStore";
-import type { JadwalMaster, JadwalDetail, GAProgress, SlotWaktu } from "@/types";
+import type { JadwalMaster, JadwalDetail, GAProgress, SlotWaktu, Ruangan, PreferensiWaktuDosen } from "@/types";
 
 const HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -21,6 +21,28 @@ export default function SchedulePage() {
   const { data: schedules = [] } = useQuery<JadwalMaster[]>({ queryKey: ["schedules"], queryFn: () => api.getSchedules() as Promise<JadwalMaster[]> });
   const { data: result } = useQuery<JadwalMaster>({ queryKey: ["schedule-result", selectedId], queryFn: () => api.getScheduleResult(selectedId!) as Promise<JadwalMaster>, enabled: !!selectedId });
   const { data: slots = [] } = useQuery<SlotWaktu[]>({ queryKey: ["waktu"], queryFn: () => api.getSlotWaktu() as Promise<SlotWaktu[]> });
+
+  const { data: rooms = [] } = useQuery<Ruangan[]>({
+    queryKey: ["ruangan"],
+    queryFn: () => api.getRuangan() as Promise<Ruangan[]>
+  });
+
+  const { data: preferensiList = [] } = useQuery<PreferensiWaktuDosen[]>({
+    queryKey: ["preferensi"],
+    queryFn: () => api.getPreferensi() as Promise<PreferensiWaktuDosen[]>
+  });
+
+  // Build preferensi lookup: dosenId -> Set of unavailable slotWaktu IDs
+  const preferensiMap = useMemo(() => {
+    const map = new Map<number, Set<number>>();
+    for (const p of preferensiList) {
+      if (p.status === "UNAVAILABLE") {
+        if (!map.has(p.idDosen)) map.set(p.idDosen, new Set());
+        map.get(p.idDosen)!.add(p.idSlotWaktu);
+      }
+    }
+    return map;
+  }, [preferensiList]);
 
   const generateMut = useMutation({
     mutationFn: (d: any) => api.generateSchedule(d),
@@ -90,6 +112,192 @@ export default function SchedulePage() {
   }, [result, slots]);
 
   const gridData = getGridData();
+
+  // ============================================================
+  // GLOBAL Conflict Detection (matches backend fitness.ts logic)
+  // Groups details into "sessions" (by matkul+dosen+ruangan on same day),
+  // computes all occupied slot IDs per session, then checks cross-session clashes
+  // ============================================================
+  const globalConflictMap = useMemo(() => {
+    const map = new Map<number, string[]>(); // detail ID -> conflict reasons
+    if (!result?.jadwalDetail || slots.length === 0) return map;
+
+    // Build ordered slot IDs per day
+    const slotsByDay: Record<string, SlotWaktu[]> = {};
+    for (const s of slots) {
+      if (!slotsByDay[s.hari]) slotsByDay[s.hari] = [];
+      slotsByDay[s.hari]!.push(s);
+    }
+    for (const day of Object.keys(slotsByDay)) {
+      slotsByDay[day]!.sort((a, b) => a.jamMulai.localeCompare(b.jamMulai));
+    }
+
+    // Group details into sessions (same matkul + dosen + ruangan on same day = one session)
+    const sorted = [...result.jadwalDetail].sort((a, b) => {
+      if (a.slotWaktu!.hari !== b.slotWaktu!.hari) return a.slotWaktu!.hari.localeCompare(b.slotWaktu!.hari);
+      return a.slotWaktu!.jamMulai.localeCompare(b.slotWaktu!.jamMulai);
+    });
+
+    interface Session {
+      detailIds: number[];
+      occupiedSlotIds: number[];
+      idDosen: number;
+      idRuangan: number;
+      idMatkul: number;
+      idProdi?: number;
+      semester?: number;
+      dosenName?: string;
+      mkName?: string;
+      ruanganName?: string;
+      hari: string;
+      kapasitas?: number;
+      jumlahMhs?: number;
+    }
+
+    const sessions: Session[] = [];
+    const processedIds = new Set<number>();
+
+    for (let i = 0; i < sorted.length; i++) {
+      const current = sorted[i];
+      if (processedIds.has(current.id)) continue;
+
+      const hari = current.slotWaktu?.hari || "";
+      const daySlots = slotsByDay[hari] || [];
+
+      const session: Session = {
+        detailIds: [current.id],
+        occupiedSlotIds: [current.idSlotWaktu],
+        idDosen: current.idDosen,
+        idRuangan: current.idRuangan,
+        idMatkul: current.idMatkul,
+        idProdi: current.mataKuliah?.idProdi,
+        semester: current.mataKuliah?.semester,
+        dosenName: current.dosen?.namaDosen,
+        mkName: current.mataKuliah?.namaMk,
+        ruanganName: current.ruangan?.namaRuangan,
+        hari,
+        kapasitas: current.ruangan?.kapasitas,
+        jumlahMhs: current.mataKuliah?.jumlahMhs,
+      };
+      processedIds.add(current.id);
+
+      // Look for consecutive slots of same matkul+dosen+ruangan
+      let lastSlotId = current.idSlotWaktu;
+      for (let j = i + 1; j < sorted.length; j++) {
+        const next = sorted[j];
+        if (processedIds.has(next.id)) continue;
+        if (next.idMatkul !== current.idMatkul || next.idDosen !== current.idDosen || next.idRuangan !== current.idRuangan) continue;
+        if (next.slotWaktu?.hari !== hari) continue;
+
+        const lastIdx = daySlots.findIndex(s => s.id === lastSlotId);
+        const nextIdx = daySlots.findIndex(s => s.id === next.idSlotWaktu);
+        if (nextIdx === lastIdx + 1) {
+          session.detailIds.push(next.id);
+          session.occupiedSlotIds.push(next.idSlotWaktu);
+          lastSlotId = next.idSlotWaktu;
+          processedIds.add(next.id);
+        }
+      }
+      sessions.push(session);
+    }
+
+    // Now check all session pairs for conflicts
+    for (let i = 0; i < sessions.length; i++) {
+      const s1 = sessions[i];
+
+      // Check break crossing within session
+      if (s1.occupiedSlotIds.length > 1) {
+        const daySlots = slotsByDay[s1.hari] || [];
+        for (let k = 0; k < s1.occupiedSlotIds.length - 1; k++) {
+          const curSlot = daySlots.find(s => s.id === s1.occupiedSlotIds[k]);
+          const nxtSlot = daySlots.find(s => s.id === s1.occupiedSlotIds[k + 1]);
+          if (curSlot && nxtSlot && curSlot.jamSelesai !== nxtSlot.jamMulai) {
+            for (const dId of s1.detailIds) {
+              const existing = map.get(dId) || [];
+              existing.push(`Melewati Jam Istirahat (${curSlot.jamSelesai} → ${nxtSlot.jamMulai})`);
+              map.set(dId, existing);
+            }
+            break;
+          }
+        }
+      }
+
+      // Check kapasitas
+      if (s1.kapasitas != null && s1.jumlahMhs != null && s1.kapasitas < s1.jumlahMhs) {
+        for (const dId of s1.detailIds) {
+          const existing = map.get(dId) || [];
+          existing.push(`Kapasitas Ruangan tidak cukup (${s1.kapasitas} < ${s1.jumlahMhs} mhs)`);
+          map.set(dId, existing);
+        }
+      }
+
+      // Day Overflow Detection
+      if (s1.occupiedSlotIds.length > 1) {
+        const firstSlot = slots.find(s => s.id === s1.occupiedSlotIds[0]);
+        const lastSlot = slots.find(s => s.id === s1.occupiedSlotIds[s1.occupiedSlotIds.length - 1]);
+        if (firstSlot && lastSlot && firstSlot.hari !== lastSlot.hari) {
+          for (const dId of s1.detailIds) {
+            const existing = map.get(dId) || [];
+            existing.push(`Durasi melewati hari (${firstSlot.hari} → ${lastSlot.hari})`);
+            map.set(dId, existing);
+          }
+        }
+      }
+
+      // Preferensi Dosen Detection
+      const unavailable = preferensiMap.get(s1.idDosen);
+      if (unavailable) {
+        for (const slotId of s1.occupiedSlotIds) {
+          if (unavailable.has(slotId)) {
+            const slotInfo = slots.find(s => s.id === slotId);
+            for (const dId of s1.detailIds) {
+              const existing = map.get(dId) || [];
+              existing.push(`Preferensi Dosen: ${s1.dosenName} tidak tersedia di ${slotInfo?.hari} ${slotInfo?.jamMulai}`);
+              map.set(dId, existing);
+            }
+            break;
+          }
+        }
+      }
+
+      for (let j = i + 1; j < sessions.length; j++) {
+        const s2 = sessions[j];
+
+        // Check if any occupied slots overlap
+        const overlappingSlots = s1.occupiedSlotIds.filter(id => s2.occupiedSlotIds.includes(id));
+        if (overlappingSlots.length === 0) continue;
+
+        const reasons1: string[] = [];
+        const reasons2: string[] = [];
+
+        if (s1.idRuangan === s2.idRuangan) {
+          reasons1.push(`Bentrok Ruangan: ${s2.mkName} menggunakan ${s1.ruanganName} di waktu yang sama`);
+          reasons2.push(`Bentrok Ruangan: ${s1.mkName} menggunakan ${s2.ruanganName} di waktu yang sama`);
+        }
+        if (s1.idDosen === s2.idDosen) {
+          reasons1.push(`Bentrok Dosen: ${s1.dosenName} juga mengajar ${s2.mkName}`);
+          reasons2.push(`Bentrok Dosen: ${s2.dosenName} juga mengajar ${s1.mkName}`);
+        }
+        if (s1.idProdi === s2.idProdi && s1.semester === s2.semester) {
+          reasons1.push(`Bentrok Semester: Semester ${s1.semester} memiliki kuliah ${s2.mkName} di waktu yang sama`);
+          reasons2.push(`Bentrok Semester: Semester ${s2.semester} memiliki kuliah ${s1.mkName} di waktu yang sama`);
+        }
+
+        if (reasons1.length > 0) {
+          for (const dId of s1.detailIds) {
+            const existing = map.get(dId) || [];
+            map.set(dId, Array.from(new Set([...existing, ...reasons1])));
+          }
+          for (const dId of s2.detailIds) {
+            const existing = map.get(dId) || [];
+            map.set(dId, Array.from(new Set([...existing, ...reasons2])));
+          }
+        }
+      }
+    }
+
+    return map;
+  }, [result, slots, preferensiMap]);
 
   const checkSlotAvailability = useCallback((item: JadwalDetail, slotId: number) => {
     if (!result?.jadwalDetail || !item.mataKuliah) return false;
@@ -291,26 +499,8 @@ export default function SchedulePage() {
                           return span;
                         };
 
-                        // Conflict Detection (including overlaps from multi-slot items)
-                        const conflictMap = new Map<number, string[]>();
-                        for (let i = 0; i < items.length; i++) {
-                          for (let j = 0; j < items.length; j++) {
-                            if (i === j) continue;
-                            const d1 = items[i];
-                            const d2 = items[j];
-                            const isRoomClash = d1.idRuangan === d2.idRuangan;
-                            const isDosenClash = d1.idDosen === d2.idDosen;
-                            const isSemesterClash = d1.mataKuliah?.idProdi === d2.mataKuliah?.idProdi && d1.mataKuliah?.semester === d2.mataKuliah?.semester;
-                            
-                            if (isRoomClash || isDosenClash || isSemesterClash) {
-                              if (!conflictMap.has(d1.id)) conflictMap.set(d1.id, []);
-                              const reasons = conflictMap.get(d1.id)!;
-                              if (isRoomClash) reasons.push(`Bentrok Ruangan: ${d2.mataKuliah?.namaMk} juga menggunakan ${d1.ruangan?.namaRuangan}`);
-                              if (isDosenClash) reasons.push(`Bentrok Dosen: ${d1.dosen?.namaDosen} juga mengajar ${d2.mataKuliah?.namaMk}`);
-                              if (isSemesterClash) reasons.push(`Bentrok Kelas: Semester ${d1.mataKuliah?.semester} Prodi ${d1.mataKuliah?.idProdi} juga ada kuliah ${d2.mataKuliah?.namaMk}`);
-                            }
-                          }
-                        }
+
+                        // Use the global conflict map (computed once, catches cross-slot conflicts)
 
                         return (
                           <td 
@@ -330,7 +520,7 @@ export default function SchedulePage() {
                             <div className="flex flex-col gap-1 h-full overflow-visible">
                               {visibleItems.map(d => {
                                 const span = getSpan(d);
-                                const isItemConflicting = conflictMap.has(d.id);
+                                const isItemConflicting = globalConflictMap.has(d.id);
                                 const isBeingDragged = draggedItem?.id === d.id;
 
                                 return (
@@ -376,7 +566,7 @@ export default function SchedulePage() {
                                           Detail Konflik
                                         </div>
                                         <ul className="space-y-1.5">
-                                          {Array.from(new Set(conflictMap.get(d.id))).map((reason, idx) => (
+                                          {Array.from(new Set(globalConflictMap.get(d.id))).map((reason, idx) => (
                                             <li key={idx} className="flex gap-2">
                                               <span className="text-error-container">•</span>
                                               <span>{reason}</span>
