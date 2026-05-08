@@ -12,11 +12,6 @@ const ROW_HEIGHT = 80; // px
 
 const PRODI_COLORS = [
   { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-900', shadow: 'shadow-[0_0_10px_rgba(59,130,246,0.1)]' },
-  { bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-900', shadow: 'shadow-[0_0_10px_rgba(139,92,246,0.1)]' },
-  { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-900', shadow: 'shadow-[0_0_10px_rgba(16,185,129,0.1)]' },
-  { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-900', shadow: 'shadow-[0_0_10px_rgba(245,158,11,0.1)]' },
-  { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-900', shadow: 'shadow-[0_0_10px_rgba(244,63,94,0.1)]' },
-  { bg: 'bg-cyan-50', border: 'border-cyan-200', text: 'text-cyan-900', shadow: 'shadow-[0_0_10px_rgba(6,182,212,0.1)]' },
 ];
 const getProdiColor = (idProdi: number = 0) => PRODI_COLORS[idProdi % PRODI_COLORS.length];
 
@@ -579,9 +574,7 @@ export default function InteractiveSchedulePage() {
               <div className="flex px-4 py-2 bg-surface-bright border-b border-outline-variant/50 text-xs items-center gap-4">
                 <span className="font-bold text-on-surface-variant">Legend:</span>
                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-100 border border-red-400"></span> Konflik</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-50 border border-blue-200"></span> TI</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-50 border border-emerald-200"></span> SI</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-50 border border-amber-200"></span> BD</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-50 border border-blue-200"></span> Normal</span>
               </div>
               <div className="flex border-b border-outline-variant">
                 <div className="w-[160px] flex-shrink-0 p-4 border-r border-outline-variant flex items-center justify-center font-bold text-xs uppercase tracking-wider text-on-surface-variant bg-surface-container-low sticky left-0 z-40">
@@ -733,77 +726,139 @@ export default function InteractiveSchedulePage() {
         </div>
       )}
 
-      {/* Detail Panel */}
+      {/* Detail Modal */}
       {selectedCourse && (
-        <div className="fixed bottom-0 left-0 right-0 bg-surface-container-lowest border-t-2 border-primary shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-[90] p-6 animate-slide-up">
-          <div className="max-w-7xl mx-auto relative">
-            <button 
-              onClick={() => setSelectedCourse(null)}
-              className="absolute -top-3 -right-3 w-8 h-8 flex items-center justify-center bg-surface-variant text-on-surface-variant rounded-full hover:bg-red-100 hover:text-red-600 transition-colors"
-            >
-              <span className="material-symbols-outlined text-sm">close</span>
-            </button>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="md:col-span-1">
-                <div className="text-xs font-bold text-primary mb-1">{selectedCourse.mataKuliah?.kodeMk}</div>
-                <h3 className="text-lg font-bold leading-tight mb-2">{selectedCourse.mataKuliah?.namaMk}</h3>
-                <div className="flex gap-2">
-                  <span className="px-2 py-1 bg-surface-variant rounded text-xs font-bold">{selectedCourse.sksTotal || selectedCourse.mataKuliah?.sks} SKS</span>
-                  <span className="px-2 py-1 bg-surface-variant rounded text-xs">Sem {selectedCourse.mataKuliah?.semester}</span>
-                  <span className="px-2 py-1 bg-surface-variant rounded text-xs">{selectedCourse.mataKuliah?.prodi?.namaProdi}</span>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 animate-fade-in sm:p-6" onClick={() => setSelectedCourse(null)}>
+          {/* Backdrop with blur */}
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"></div>
+          
+          {/* Modal Container */}
+          <div 
+            className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden transform transition-all animate-slide-up border border-slate-200"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header Section (Color coded based on conflict/prodi) */}
+            <div className={`px-6 py-8 relative overflow-hidden ${conflictMap.has(selectedCourse.id) ? 'bg-red-50' : 'bg-primary/5'}`}>
+              {/* Decorative Background Elements */}
+              <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-32 h-32 bg-primary/10 rounded-full blur-2xl"></div>
+              
+              <button 
+                onClick={() => setSelectedCourse(null)}
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center bg-white/50 hover:bg-white text-slate-500 hover:text-slate-700 rounded-full transition-all shadow-sm backdrop-blur-md"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
+
+              <div className="relative z-10 flex flex-col gap-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2.5 py-1 bg-primary text-white rounded-md text-xs font-bold tracking-wider shadow-sm">
+                    {selectedCourse.mataKuliah?.kodeMk}
+                  </span>
+                  <span className="px-2.5 py-1 bg-white text-slate-700 border border-slate-200 rounded-md text-xs font-bold shadow-sm">
+                    {selectedCourse.sksTotal || selectedCourse.mataKuliah?.sks} SKS
+                  </span>
+                  <span className="px-2.5 py-1 bg-white text-slate-700 border border-slate-200 rounded-md text-xs font-bold shadow-sm">
+                    Sem {selectedCourse.mataKuliah?.semester}
+                  </span>
+                  <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-xs font-bold shadow-sm">
+                    {selectedCourse.mataKuliah?.prodi?.namaProdi}
+                  </span>
                 </div>
+                
+                <h3 className="text-2xl font-extrabold text-slate-900 leading-tight">
+                  {selectedCourse.mataKuliah?.namaMk}
+                </h3>
               </div>
-              <div className="md:col-span-1 space-y-3 text-sm">
-                <div className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-on-surface-variant">person</span>
-                  <div>
-                    <div className="text-xs text-on-surface-variant">Dosen Pengampu</div>
-                    <div className="font-semibold">{selectedCourse.dosen?.namaDosen}</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-on-surface-variant">meeting_room</span>
-                  <div>
-                    <div className="text-xs text-on-surface-variant">Ruangan</div>
-                    <div className="font-semibold">{rooms.find(r => r.id === selectedCourse.idRuangan)?.namaRuangan} <span className="text-xs text-outline font-normal">(Kap: {rooms.find(r => r.id === selectedCourse.idRuangan)?.kapasitas})</span></div>
-                  </div>
-                </div>
-              </div>
-              <div className="md:col-span-1 space-y-3 text-sm">
-                <div className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-on-surface-variant">schedule</span>
-                  <div>
-                    <div className="text-xs text-on-surface-variant">Waktu</div>
-                    <div className="font-semibold">{selectedCourse.slotWaktu?.hari}, {selectedCourse.slotWaktu?.jamMulai} - {selectedCourse.slotWaktu?.jamSelesai}</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-on-surface-variant">groups</span>
-                  <div>
-                    <div className="text-xs text-on-surface-variant">Jumlah Mhs</div>
-                    <div className="font-semibold">{selectedCourse.mataKuliah?.jumlahMhs || 0} Mahasiswa</div>
-                  </div>
-                </div>
-              </div>
-              <div className="md:col-span-1">
-                {conflictMap.has(selectedCourse.id) ? (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                    <div className="text-xs font-bold text-red-600 mb-2 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[14px]">warning</span> KONFLIK TERDETEKSI
+            </div>
+
+            {/* Content Section */}
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* Information Cards */}
+                <div className="space-y-4">
+                  <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-colors hover:border-primary/30">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                      <span className="material-symbols-outlined">person</span>
                     </div>
-                    <ul className="text-xs text-red-800 space-y-1 ml-4 list-disc">
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Dosen Pengampu</p>
+                      <p className="font-bold text-slate-900">{selectedCourse.dosen?.namaDosen}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-colors hover:border-primary/30">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                      <span className="material-symbols-outlined">meeting_room</span>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Ruangan</p>
+                      <p className="font-bold text-slate-900 flex items-center gap-2">
+                        {rooms.find(r => r.id === selectedCourse.idRuangan)?.namaRuangan}
+                        <span className="px-2 py-0.5 rounded bg-slate-200 text-[10px] text-slate-600 font-medium">Kap: {rooms.find(r => r.id === selectedCourse.idRuangan)?.kapasitas}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-colors hover:border-primary/30">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                      <span className="material-symbols-outlined">schedule</span>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Waktu</p>
+                      <p className="font-bold text-slate-900">{selectedCourse.slotWaktu?.hari}</p>
+                      <p className="text-sm text-slate-600 mt-0.5">{selectedCourse.slotWaktu?.jamMulai} - {selectedCourse.slotWaktu?.jamSelesai}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-colors hover:border-primary/30">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
+                      <span className="material-symbols-outlined">groups</span>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Jumlah Mahasiswa</p>
+                      <p className="font-bold text-slate-900">{selectedCourse.mataKuliah?.jumlahMhs || 0} Orang</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Conflict Status */}
+              <div className="mt-6">
+                {conflictMap.has(selectedCourse.id) ? (
+                  <div className="bg-red-50 border-l-4 border-red-500 rounded-r-xl p-4 shadow-sm">
+                    <div className="flex items-center gap-2 text-red-700 font-bold mb-3">
+                      <span className="material-symbols-outlined">error</span>
+                      <h3>Konflik Terdeteksi</h3>
+                    </div>
+                    <ul className="space-y-2">
                       {conflictMap.get(selectedCourse.id)?.map((reason, idx) => (
-                        <li key={idx}>{reason}</li>
+                        <li key={idx} className="flex items-start gap-2 text-sm text-red-800">
+                          <span className="material-symbols-outlined text-[16px] mt-0.5 opacity-70">arrow_right</span>
+                          <span>{reason}</span>
+                        </li>
                       ))}
                     </ul>
                   </div>
                 ) : (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-green-800">
-                    <span className="material-symbols-outlined text-green-600">check_circle</span>
-                    <span className="text-sm font-semibold">Tidak ada konflik</span>
+                  <div className="flex items-center justify-center gap-2 p-4 bg-green-50 text-green-700 rounded-xl border border-green-200">
+                    <span className="material-symbols-outlined">check_circle</span>
+                    <span className="font-bold">Jadwal Sesuai (Tidak ada konflik)</span>
                   </div>
                 )}
               </div>
+            </div>
+            
+            {/* Footer Action */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <button 
+                onClick={() => setSelectedCourse(null)}
+                className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold transition-colors shadow-md"
+              >
+                Tutup Modal
+              </button>
             </div>
           </div>
         </div>
