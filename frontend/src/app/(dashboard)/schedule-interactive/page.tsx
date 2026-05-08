@@ -381,6 +381,46 @@ export default function InteractiveSchedulePage() {
     return true;
   }, [result, slots, rooms]);
 
+  const moveSuggestions = useMemo(() => {
+    if (!selectedCourse || !slots.length || !rooms.length) return [];
+    
+    const suggestions: { slotId: number; roomId: number; hari: string; jamMulai: string; jamSelesai: string; roomName: string }[] = [];
+    
+    // Scan through all days, rooms, and slots to find conflict-free options
+    for (const hari of HARI) {
+      // Find slots for this day
+      const daySlots = slots.filter(s => s.hari === hari).sort((a, b) => a.jamMulai.localeCompare(b.jamMulai));
+      
+      for (const room of rooms) {
+        for (const slot of daySlots) {
+          // Skip current position
+          if (slot.id === selectedCourse.idSlotWaktu && room.id === selectedCourse.idRuangan) continue;
+
+          if (checkAvailability(selectedCourse, slot.id, room.id)) {
+            // Find the end slot to show the full time range
+            const sks = selectedCourse.sksTotal || selectedCourse.mataKuliah?.sks || 1;
+            const startIdx = daySlots.findIndex(s => s.id === slot.id);
+            const endSlot = daySlots[startIdx + sks - 1];
+
+            suggestions.push({
+              slotId: slot.id,
+              roomId: room.id,
+              hari: hari,
+              jamMulai: slot.jamMulai,
+              jamSelesai: endSlot?.jamSelesai || slot.jamSelesai,
+              roomName: room.namaRuangan
+            });
+
+            if (suggestions.length >= 8) break; // Limit to 8 suggestions for UI clarity
+          }
+        }
+        if (suggestions.length >= 8) break;
+      }
+      if (suggestions.length >= 8) break;
+    }
+    return suggestions;
+  }, [selectedCourse, rooms, slots, checkAvailability]);
+
   const handleDragStart = useCallback((course: any) => {
     setDraggedItem(course);
     
@@ -825,23 +865,71 @@ export default function InteractiveSchedulePage() {
                 </div>
               </div>
 
-              {/* Conflict Status */}
-              <div className="mt-6">
+              {/* Conflict Status & Suggestions */}
+              <div className="mt-6 space-y-6">
                 {conflictMap.has(selectedCourse.id) ? (
-                  <div className="bg-red-50 border-l-4 border-red-500 rounded-r-xl p-4 shadow-sm">
-                    <div className="flex items-center gap-2 text-red-700 font-bold mb-3">
-                      <span className="material-symbols-outlined">error</span>
-                      <h3>Konflik Terdeteksi</h3>
+                  <>
+                    <div className="bg-red-50 border-l-4 border-red-500 rounded-r-xl p-4 shadow-sm">
+                      <div className="flex items-center gap-2 text-red-700 font-bold mb-3">
+                        <span className="material-symbols-outlined">error</span>
+                        <h3>Konflik Terdeteksi</h3>
+                      </div>
+                      <ul className="space-y-2">
+                        {conflictMap.get(selectedCourse.id)?.map((reason, idx) => (
+                          <li key={idx} className="flex items-start gap-2 text-sm text-red-800">
+                            <span className="material-symbols-outlined text-[16px] mt-0.5 opacity-70">arrow_right</span>
+                            <span>{reason}</span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                    <ul className="space-y-2">
-                      {conflictMap.get(selectedCourse.id)?.map((reason, idx) => (
-                        <li key={idx} className="flex items-start gap-2 text-sm text-red-800">
-                          <span className="material-symbols-outlined text-[16px] mt-0.5 opacity-70">arrow_right</span>
-                          <span>{reason}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+
+                    {/* Move Suggestions Section */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-slate-800 font-bold px-1">
+                        <span className="material-symbols-outlined text-primary">auto_awesome</span>
+                        <h3>Saran Perpindahan Jadwal</h3>
+                        <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold ml-auto">Bebas Konflik</span>
+                      </div>
+                      
+                      {moveSuggestions.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {moveSuggestions.map((sug, idx) => (
+                            <div 
+                              key={idx} 
+                              className="group flex flex-col p-3 bg-white border border-slate-200 rounded-xl hover:border-primary hover:shadow-md transition-all cursor-default relative overflow-hidden"
+                            >
+                              <div className="flex justify-between items-start mb-2">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{sug.hari}</span>
+                                <span className="text-[10px] font-bold text-primary bg-primary/5 px-2 py-0.5 rounded">{sug.roomName}</span>
+                              </div>
+                              <div className="text-sm font-bold text-slate-900 mb-3">
+                                {sug.jamMulai} - {sug.jamSelesai}
+                              </div>
+                              <button 
+                                onClick={() => {
+                                  updateSlotMut.mutate({ 
+                                    detailId: selectedCourse.id, 
+                                    data: { idSlotWaktu: sug.slotId, idRuangan: sug.roomId, detailIds: selectedCourse.detailIds } 
+                                  });
+                                  setSelectedCourse(null);
+                                }}
+                                className="w-full py-2 bg-slate-50 hover:bg-primary hover:text-white text-primary border border-primary/20 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">swap_horiz</span>
+                                Pindahkan Ke Sini
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500">
+                          <span className="material-symbols-outlined text-3xl mb-2 opacity-30">search_off</span>
+                          <p className="text-xs font-medium text-center px-4">Tidak ditemukan slot kosong yang tersedia.<br/>Coba pindahkan jadwal lain terlebih dahulu.</p>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 ) : (
                   <div className="flex items-center justify-center gap-2 p-4 bg-green-50 text-green-700 rounded-xl border border-green-200">
                     <span className="material-symbols-outlined">check_circle</span>
