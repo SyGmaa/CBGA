@@ -14,6 +14,7 @@ export default function SchedulePage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [draggedItem, setDraggedItem] = useState<JadwalDetail | null>(null);
   const [showGenerate, setShowGenerate] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [showManage, setShowManage] = useState(false);
   const [selectedForDelete, setSelectedForDelete] = useState<number[]>([]);
   const [genForm, setGenForm] = useState({ tahunAkademik: "2025/2026", semesterTipe: "Ganjil", jumlahJadwal: 10, maxGenerasi: 500 });
@@ -46,8 +47,9 @@ export default function SchedulePage() {
 
   const generateMut = useMutation({
     mutationFn: (d: any) => api.generateSchedule(d),
-    onSuccess: (data: any) => { setSelectedId(data.jadwalMasterId); setShowGenerate(false); },
-    onError: (error: any) => alert(error.message || "Gagal menghubungi server/database."),
+    onMutate: () => { setIsGenerating(true); setShowGenerate(false); },
+    onSuccess: (data: any) => { setSelectedId(data.jadwalMasterId); },
+    onError: (error: any) => { setIsGenerating(false); alert(error.message || "Gagal menghubungi server/database."); },
   });
 
   const updateSlotMut = useMutation({
@@ -79,10 +81,11 @@ export default function SchedulePage() {
     socket.on("ga_progress", (data: GAProgress) => setGAProgress(data));
     socket.on("ga_completed", () => {
       setGAProgress(null);
+      setIsGenerating(false);
       qc.invalidateQueries({ queryKey: ["schedules"] });
       qc.invalidateQueries({ queryKey: ["schedule-result", selectedId] });
     });
-    socket.on("ga_error", (data: any) => { setGAProgress(null); alert("Error: " + data.error); });
+    socket.on("ga_error", (data: any) => { setGAProgress(null); setIsGenerating(false); alert("Error: " + data.error); });
     return () => { socket.off("ga_progress"); socket.off("ga_completed"); socket.off("ga_error"); disconnectSocket(); };
   }, [selectedId]);
 
@@ -612,25 +615,42 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      {/* GA Progress Modal */}
-      {gaProgress && (
+      {/* GA Progress Modal - shows immediately when isGenerating is true */}
+      {(isGenerating || gaProgress) && (
         <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-surface-container-lowest rounded-xl shadow-[0px_20px_25px_-5px_rgba(0,0,0,0.1),0px_10px_10px_-5px_rgba(0,0,0,0.04)] border border-outline-variant w-full max-w-md p-6 flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-full bg-primary-container/10 flex items-center justify-center mb-4 text-primary">
               <span className="material-symbols-outlined text-[32px] spin">settings</span>
             </div>
-            <h2 className="font-headline-md text-[20px] text-on-surface mb-2">Menyusun Jadwal Optimal...</h2>
-            <p className="text-on-surface-variant font-label-sm text-label-sm mb-6">Mengevaluasi mutasi pada populasi...</p>
+            <h2 className="font-headline-md text-[20px] text-on-surface mb-2">
+              {gaProgress ? "Menyusun Jadwal Optimal..." : "Mempersiapkan Algoritma..."}
+            </h2>
+            <p className="text-on-surface-variant font-label-sm text-label-sm mb-6">
+              {gaProgress ? "Mengevaluasi mutasi pada populasi..." : "Menginisialisasi data dan memulai komputasi..."}
+            </p>
             
             <div className="w-full bg-surface-variant rounded-full h-3 mb-2 overflow-hidden">
-              <div 
-                className="bg-gradient-to-r from-primary to-secondary h-3 rounded-full transition-all duration-300" 
-                style={{ width: `${(gaProgress.generasi / gaProgress.maxGenerasi) * 100}%` }}
-              ></div>
+              {gaProgress ? (
+                <div 
+                  className="bg-gradient-to-r from-primary to-secondary h-3 rounded-full transition-all duration-300" 
+                  style={{ width: `${(gaProgress.generasi / gaProgress.maxGenerasi) * 100}%` }}
+                ></div>
+              ) : (
+                <div className="bg-gradient-to-r from-primary to-secondary h-3 rounded-full animate-pulse w-[15%]"></div>
+              )}
             </div>
             <div className="w-full flex justify-between text-xs text-on-surface-variant font-mono-data mb-6">
-              <span>Generasi ke-{gaProgress.generasi} dari {gaProgress.maxGenerasi}</span>
-              <span>{Math.round((gaProgress.generasi / gaProgress.maxGenerasi) * 100)}%</span>
+              {gaProgress ? (
+                <>
+                  <span>Generasi ke-{gaProgress.generasi} dari {gaProgress.maxGenerasi}</span>
+                  <span>{Math.round((gaProgress.generasi / gaProgress.maxGenerasi) * 100)}%</span>
+                </>
+              ) : (
+                <>
+                  <span>Memuat data...</span>
+                  <span>0%</span>
+                </>
+              )}
             </div>
             <p className="text-[11px] text-outline italic">Mohon tunggu, komputasi algoritma membutuhkan waktu beberapa saat.</p>
           </div>
