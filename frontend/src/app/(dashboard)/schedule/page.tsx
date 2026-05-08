@@ -54,7 +54,7 @@ export default function SchedulePage() {
 
   const updateSlotMut = useMutation({
     mutationFn: ({ detailId, data }: { detailId: number; data: any }) => api.updateScheduleSlot(detailId, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["schedule-result", selectedId] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["schedule-result", selectedId] }); qc.invalidateQueries({ queryKey: ["schedules"] }); },
     onError: (error: any) => alert(error.message || "Gagal menyimpan perubahan."),
   });
 
@@ -302,6 +302,11 @@ export default function SchedulePage() {
     return map;
   }, [result, slots, preferensiMap]);
 
+  // Live conflict count: total unique sessions with conflicts (computed from current data)
+  const liveConflictCount = useMemo(() => {
+    return globalConflictMap.size;
+  }, [globalConflictMap]);
+
   const checkSlotAvailability = useCallback((item: JadwalDetail, slotId: number) => {
     if (!result?.jadwalDetail || !item.mataKuliah) return false;
     
@@ -409,7 +414,7 @@ export default function SchedulePage() {
               <option value="" disabled>Pilih Jadwal Tersimpan</option>
               {schedules.map(s => (
                 <option key={s.id} value={s.id}>
-                  {s.tahunAkademik} {s.semesterTipe} - {s.status} (Konflik: {s.conflictCount ?? 0})
+                  {s.tahunAkademik} {s.semesterTipe} - {s.status}{s.id === selectedId && liveConflictCount > 0 ? ` ⚠ ${liveConflictCount} konflik terdeteksi` : s.conflictCount ? ` (Konflik: ${s.conflictCount})` : ''}
                 </option>
               ))}
             </select>
@@ -430,7 +435,27 @@ export default function SchedulePage() {
         {/* Top: Matrix/Grid (Full Width) */}
         <div className="w-full h-[calc(100vh-280px)] min-h-[600px] bg-surface-container-lowest rounded-xl shadow-[0px_1px_3px_rgba(0,0,0,0.05)] border border-outline-variant overflow-hidden flex flex-col">
           <div className="bg-surface-container-low px-4 py-3 border-b border-outline-variant flex justify-between items-center">
-            <h3 className="font-label-sm text-label-sm text-on-surface font-semibold">Grid Jadwal</h3>
+            <div className="flex items-center gap-3">
+              <h3 className="font-label-sm text-label-sm text-on-surface font-semibold">Grid Jadwal</h3>
+              {result && (
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                  result.status === 'FINAL' 
+                    ? 'bg-green-100 text-green-800 border border-green-300' 
+                    : result.status === 'GENERATING' 
+                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' 
+                    : 'bg-gray-100 text-gray-800 border border-gray-300'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${result.status === 'FINAL' ? 'bg-green-500' : result.status === 'GENERATING' ? 'bg-yellow-500' : 'bg-gray-500'}`}></span>
+                  {result.status}
+                </span>
+              )}
+              {result && liveConflictCount > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-300">
+                  <span className="material-symbols-outlined text-[14px]">warning</span>
+                  {liveConflictCount} konflik terdeteksi
+                </span>
+              )}
+            </div>
             <div className="flex gap-4 items-center">
               {result && (
                 <span className="text-xs text-on-surface-variant">Fitness: {result.fitnessScore?.toFixed(4)}</span>
@@ -441,6 +466,15 @@ export default function SchedulePage() {
               </div>
             </div>
           </div>
+          {/* Warning banner when FINAL schedule has live conflicts */}
+          {result && result.status === 'FINAL' && liveConflictCount > 0 && (
+            <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-3 text-amber-900">
+              <span className="material-symbols-outlined text-amber-600 text-[20px]">info</span>
+              <p className="text-xs font-medium">
+                Jadwal ini berstatus <strong>FINAL</strong>, namun terdeteksi <strong>{liveConflictCount} konflik baru</strong> akibat perubahan data (preferensi dosen, dll). Status tetap FINAL, namun konflik perlu ditinjau.
+              </p>
+            </div>
+          )}
           <div className="flex-1 overflow-auto p-4 bg-surface-bright">
             {result?.jadwalDetail && result.jadwalDetail.length > 0 ? (
               <table className="w-full min-w-[1000px] border-collapse ghost-border">
@@ -686,7 +720,14 @@ export default function SchedulePage() {
                       />
                       <div className="flex-1">
                         <p className="text-sm font-semibold text-on-surface">{s.tahunAkademik} - {s.semesterTipe}</p>
-                        <p className="text-xs text-on-surface-variant">Status: {s.status} • Konflik: {s.conflictCount ?? 0}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            s.status === 'FINAL' ? 'bg-green-100 text-green-800' : s.status === 'GENERATING' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {s.status}
+                          </span>
+                          <span className="text-xs text-on-surface-variant">Konflik: {s.conflictCount ?? 0}</span>
+                        </div>
                       </div>
                     </li>
                   ))}

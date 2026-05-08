@@ -58,7 +58,7 @@ export default function InteractiveSchedulePage() {
 
   const updateSlotMut = useMutation({
     mutationFn: ({ detailId, data }: { detailId: number; data: any }) => api.updateScheduleSlot(detailId, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["schedule-result", selectedId] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["schedule-result", selectedId] }); qc.invalidateQueries({ queryKey: ["schedules"] }); },
     onError: (error: any) => alert(error.message || "Gagal menyimpan perubahan."),
   });
 
@@ -234,6 +234,11 @@ export default function InteractiveSchedulePage() {
     return map;
   }, [sessions, slots, rooms, preferensiMap]);
 
+  // Live conflict count: total unique sessions with conflicts (computed from current data)
+  const liveConflictCount = useMemo(() => {
+    return conflictMap.size;
+  }, [conflictMap]);
+
   // 3. Organized data for UI: Day -> Room -> Sessions
   const organizedData = useMemo(() => {
     const data: Record<string, Record<number, any[]>> = {};
@@ -342,7 +347,27 @@ export default function InteractiveSchedulePage() {
       {/* Header & Controls Section */}
       <div className="mb-8 space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-on-surface">Interactive Timeline Schedule</h2>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-2xl font-bold text-on-surface">Interactive Timeline Schedule</h2>
+            {result && (
+              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                result.status === 'FINAL' 
+                  ? 'bg-green-100 text-green-800 border border-green-300' 
+                  : result.status === 'GENERATING' 
+                  ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' 
+                  : 'bg-gray-100 text-gray-800 border border-gray-300'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${result.status === 'FINAL' ? 'bg-green-500' : result.status === 'GENERATING' ? 'bg-yellow-500' : 'bg-gray-500'}`}></span>
+                {result.status}
+              </span>
+            )}
+            {result && liveConflictCount > 0 && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-300">
+                <span className="material-symbols-outlined text-[14px]">warning</span>
+                {liveConflictCount} konflik terdeteksi
+              </span>
+            )}
+          </div>
           <p className="text-on-surface-variant text-sm mt-1">Visualisasi jadwal dengan drag & drop dan durasi SKS yang jelas.</p>
         </div>
 
@@ -361,7 +386,7 @@ export default function InteractiveSchedulePage() {
               <option value="" disabled>Pilih Jadwal Master...</option>
               {schedules.map(s => (
                 <option key={s.id} value={s.id}>
-                  {s.tahunAkademik} {s.semesterTipe} - {s.status}
+                  {s.tahunAkademik} {s.semesterTipe} - {s.status}{s.id === selectedId && liveConflictCount > 0 ? ` ⚠ ${liveConflictCount} konflik terdeteksi` : s.conflictCount ? ` (Konflik: ${s.conflictCount})` : ''}
                 </option>
               ))}
             </select>
@@ -384,6 +409,16 @@ export default function InteractiveSchedulePage() {
           </button>
         </div>
       </div>
+
+      {/* Warning banner when FINAL schedule has live conflicts */}
+      {result && result.status === 'FINAL' && liveConflictCount > 0 && (
+        <div className="px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 text-amber-900 mb-4">
+          <span className="material-symbols-outlined text-amber-600 text-[20px]">info</span>
+          <p className="text-xs font-medium">
+            Jadwal ini berstatus <strong>FINAL</strong>, namun terdeteksi <strong>{liveConflictCount} konflik baru</strong> akibat perubahan data (preferensi dosen, dll). Status tetap FINAL, namun konflik perlu ditinjau.
+          </p>
+        </div>
+      )}
 
       {/* Main Grid Container */}
       <div className="bg-surface-container-lowest rounded-xl shadow-md border border-outline-variant overflow-hidden flex flex-col w-full h-[calc(100vh-320px)] min-h-[500px]">

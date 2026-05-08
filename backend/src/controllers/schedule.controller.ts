@@ -359,8 +359,9 @@ export async function updateSlot(req: Request, res: Response) {
       }
     });
 
-    // Auto-update status to FINAL if no conflicts remain
+    // Recalculate conflict count but NEVER downgrade FINAL status
     const masterId = targetDetail.idJadwalMaster;
+    const currentMaster = await prisma.jadwalMaster.findUnique({ where: { id: masterId } });
     const allDetails = await prisma.jadwalDetail.findMany({
       where: { idJadwalMaster: masterId },
       include: { mataKuliah: true }
@@ -383,9 +384,15 @@ export async function updateSlot(req: Request, res: Response) {
       }
     }
 
+    // Status logic: FINAL is permanent (never downgraded), DRAFT can be promoted to FINAL
+    let newStatus = currentMaster?.status || StatusJadwal.DRAFT;
+    if (newStatus !== StatusJadwal.FINAL && conflictCount === 0) {
+      newStatus = StatusJadwal.FINAL;
+    }
+
     await prisma.jadwalMaster.update({
       where: { id: masterId },
-      data: { status: conflictCount > 0 ? StatusJadwal.DRAFT : StatusJadwal.FINAL, conflictCount }
+      data: { status: newStatus, conflictCount }
     });
 
     res.json(updatedMaster?.jadwalDetail[0]);
