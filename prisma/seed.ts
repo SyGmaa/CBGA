@@ -152,26 +152,26 @@ async function main() {
 
   const ruanganData = [];
 
-  // Gedung C: 3 lantai, 10 ruangan per lantai
+  // Gedung C: 3 lantai, 6 ruangan per lantai = 18
   for (let lantai = 1; lantai <= 3; lantai++) {
-    for (let ruang = 1; ruang <= 10; ruang++) {
+    for (let ruang = 1; ruang <= 6; ruang++) {
       const ruangNum = ruang < 10 ? `0${ruang}` : `${ruang}`;
       ruanganData.push({ namaRuangan: `R. C${lantai}${ruangNum}`, idGedung: gedungC.id, kapasitas: faker.helpers.arrayElement([30, 40, 50]) });
     }
   }
 
-  // Gedung E: 2 lantai, 14 ruangan per lantai
+  // Gedung E: 2 lantai, 10 ruangan per lantai = 20
   for (let lantai = 1; lantai <= 2; lantai++) {
-    for (let ruang = 1; ruang <= 14; ruang++) {
+    for (let ruang = 1; ruang <= 10; ruang++) {
       const ruangNum = ruang < 10 ? `0${ruang}` : `${ruang}`;
       ruanganData.push({ namaRuangan: `R. E${lantai}${ruangNum}`, idGedung: gedungE.id, kapasitas: faker.helpers.arrayElement([30, 40, 50]) });
     }
   }
 
-  // Gedung Rektorat: 3 ruangan
+  // Gedung Rektorat: 2 ruangan = 2
+  // Total = 18 + 20 + 2 = 40
   ruanganData.push({ namaRuangan: "Aula Rektorat", idGedung: gedungR.id, kapasitas: 100 });
   ruanganData.push({ namaRuangan: "Ruang Sidang Utama", idGedung: gedungR.id, kapasitas: 50 });
-  ruanganData.push({ namaRuangan: "Ruang Rapat Senat", idGedung: gedungR.id, kapasitas: 40 });
 
   await prisma.ruangan.createMany({ data: ruanganData });
   console.log(`   ✅ ${ruanganData.length} Ruangan di 3 Gedung created`);
