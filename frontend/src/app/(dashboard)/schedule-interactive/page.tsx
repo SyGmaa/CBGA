@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { connectSocket, disconnectSocket } from "@/lib/socket";
@@ -20,7 +20,6 @@ export default function InteractiveSchedulePage() {
   const { gaProgress, setGAProgress } = useAppStore();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [draggedItem, setDraggedItem] = useState<(JadwalDetail & { sksTotal?: number; slotIds?: number[]; detailIds?: number[] }) | null>(null);
-  const [validDropZones, setValidDropZones] = useState<Set<string>>(new Set());
   const [showAllRooms, setShowAllRooms] = useState(false);
   const [showGenerate, setShowGenerate] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -81,8 +80,62 @@ export default function InteractiveSchedulePage() {
 
   const updateSlotMut = useMutation({
     mutationFn: ({ detailId, data }: { detailId: number; data: any }) => api.updateScheduleSlot(detailId, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["schedule-result", selectedId] }); qc.invalidateQueries({ queryKey: ["schedules"] }); },
-    onError: (error: any) => alert(error.message || "Gagal menyimpan perubahan."),
+    onMutate: async (newMove) => {
+      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      await qc.cancelQueries({ queryKey: ["schedule-result", selectedId] });
+
+      // Snapshot the previous value
+      const previousSchedule = qc.getQueryData(["schedule-result", selectedId]);
+
+      // Optimistically update to the new value
+      if (previousSchedule && selectedId) {
+        qc.setQueryData(["schedule-result", selectedId], (old: any) => {
+          if (!old) return old;
+
+          const startSlot = slots.find(s => s.id === newMove.data.idSlotWaktu);
+          if (!startSlot) return old;
+
+          const daySlots = slots
+            .filter(s => s.hari === startSlot.hari)
+            .sort((a, b) => a.jamMulai.localeCompare(b.jamMulai));
+          
+          const startIdx = daySlots.findIndex(s => s.id === startSlot.id);
+          const detailIds = newMove.data.detailIds || [];
+
+          // Create a new array of details with the updated ones
+          const newDetails = old.jadwalDetail.map((d: any) => {
+            const idxInSession = detailIds.indexOf(d.id);
+            if (idxInSession !== -1) {
+              const nextSlot = daySlots[startIdx + idxInSession];
+              return { 
+                ...d, 
+                idRuangan: newMove.data.idRuangan, 
+                idSlotWaktu: nextSlot?.id || d.idSlotWaktu,
+                slotWaktu: nextSlot || d.slotWaktu,
+                ruangan: rooms.find(r => r.id === newMove.data.idRuangan) || d.ruangan
+              };
+            }
+            return d;
+          });
+
+          return { ...old, jadwalDetail: newDetails };
+        });
+      }
+
+      return { previousSchedule };
+    },
+    onError: (error: any, newMove, context) => {
+      // Roll back to the previous state if the mutation fails
+      if (context?.previousSchedule) {
+        qc.setQueryData(["schedule-result", selectedId], context.previousSchedule);
+      }
+      alert(error.message || "Gagal menyimpan perubahan. Mengembalikan ke posisi semula.");
+    },
+    onSettled: () => {
+      // Always refetch after error or success to ensure synchronization
+      qc.invalidateQueries({ queryKey: ["schedule-result", selectedId] });
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+    },
   });
 
   const generateMut = useMutation({
@@ -179,6 +232,41 @@ export default function InteractiveSchedulePage() {
     }
     return results;
   }, [result, slots]);
+
+  // Build lookup maps for faster conflict checking
+  const detailsBySlot = useMemo(() => {
+    const map = new Map<number, JadwalDetail[]>();
+    if (!result?.jadwalDetail) return map;
+    
+    result.jadwalDetail.forEach(d => {
+      if (!map.has(d.idSlotWaktu)) map.set(d.idSlotWaktu, []);
+      map.get(d.idSlotWaktu)!.push(d);
+    });
+    return map;
+  }, [result?.jadwalDetail]);
+
+  const detailsByDosen = useMemo(() => {
+    const map = new Map<number, JadwalDetail[]>();
+    if (!result?.jadwalDetail) return map;
+
+    result.jadwalDetail.forEach(d => {
+      if (!map.has(d.idDosen)) map.set(d.idDosen, []);
+      map.get(d.idDosen)!.push(d);
+    });
+    return map;
+  }, [result?.jadwalDetail]);
+
+  const detailsBySemester = useMemo(() => {
+    const map = new Map<string, JadwalDetail[]>();
+    if (!result?.jadwalDetail) return map;
+
+    result.jadwalDetail.forEach(d => {
+      const key = `${d.mataKuliah?.idProdi}-${d.mataKuliah?.semester}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(d);
+    });
+    return map;
+  }, [result?.jadwalDetail]);
 
   // 2. Conflict Map: Based on Sessions — matches backend fitness.ts logic
   const conflictMap = useMemo(() => {
@@ -337,7 +425,7 @@ export default function InteractiveSchedulePage() {
     return timeLabels.findIndex(t => t.start === jamMulai);
   };
 
-  const checkAvailability = useCallback((item: JadwalDetail, slotId: number, roomId: number) => {
+  const checkAvailability = useCallback((item: JadwalDetail & { detailIds?: number[] }, slotId: number, roomId: number) => {
     if (!result?.jadwalDetail) return false;
     
     const targetSlot = slots.find(s => s.id === slotId);
@@ -357,29 +445,36 @@ export default function InteractiveSchedulePage() {
     const startIdx = daySlots.findIndex(s => s.id === slotId);
     if (startIdx === -1 || (startIdx + sks) > daySlots.length) return false;
 
-    const targetSlotIds = daySlots.slice(startIdx, startIdx + sks).map(s => s.id);
+    const targetSlotRange = daySlots.slice(startIdx, startIdx + sks);
+    const targetSlotIds = targetSlotRange.map(s => s.id);
 
     // Check Break Crossing: ensure no time gap between consecutive target slots
-    const targetSlotRange = daySlots.slice(startIdx, startIdx + sks);
     for (let k = 0; k < targetSlotRange.length - 1; k++) {
       if (targetSlotRange[k].jamSelesai !== targetSlotRange[k + 1].jamMulai) {
-        return false; // Would cross a break period
+        return false; 
       }
     }
     
-    for (const other of result.jadwalDetail) {
-      if ((item.detailIds && item.detailIds.includes(other.id)) || other.id === item.id) continue;
-      
-      if (targetSlotIds.includes(other.idSlotWaktu)) {
+    const ignoredDetailIds = new Set(item.detailIds || [item.id]);
+
+    for (const sId of targetSlotIds) {
+      const others = detailsBySlot.get(sId);
+      if (!others) continue;
+
+      for (const other of others) {
+        if (ignoredDetailIds.has(other.id)) continue;
+
         const isRoomClash = roomId === other.idRuangan;
         const isDosenClash = item.idDosen === other.idDosen;
-        const isSemesterClash = item.mataKuliah?.idProdi === other.mataKuliah?.idProdi && item.mataKuliah?.semester === other.mataKuliah?.semester;
+        const isSemesterClash = item.mataKuliah?.idProdi === other.mataKuliah?.idProdi && 
+                              item.mataKuliah?.semester === other.mataKuliah?.semester;
         
         if (isRoomClash || isDosenClash || isSemesterClash) return false;
       }
     }
+
     return true;
-  }, [result, slots, rooms]);
+  }, [result?.jadwalDetail, slots, rooms, detailsBySlot]);
 
   const moveSuggestions = useMemo(() => {
     if (!selectedCourse || !slots.length || !rooms.length) return [];
@@ -423,20 +518,7 @@ export default function InteractiveSchedulePage() {
 
   const handleDragStart = useCallback((course: any) => {
     setDraggedItem(course);
-    
-    // Pre-calculate valid drop zones ONCE per drag to avoid millions of loop checks
-    const newValidZones = new Set<string>();
-    HARI.forEach(hari => {
-      rooms.forEach(room => {
-        slots.forEach(slot => {
-          if (slot.hari === hari && checkAvailability(course, slot.id, room.id)) {
-            newValidZones.add(`${hari}-${room.id}-${slot.id}`);
-          }
-        });
-      });
-    });
-    setValidDropZones(newValidZones);
-  }, [rooms, slots, checkAvailability]);
+  }, []);
 
   const handleDrop = (e: React.DragEvent, hari: string, slotId: number, roomId: number) => {
     e.preventDefault();
@@ -643,7 +725,7 @@ export default function InteractiveSchedulePage() {
                 return (
                   <div key={hari} className="flex border-b border-outline-variant last:border-0">
                     {/* Day Label (Sticky) */}
-                    <div className="w-[160px] flex-shrink-0 bg-surface-container-low/50 border-r border-outline-variant flex items-center justify-center sticky left-0 z-20 backdrop-blur-md shadow-[2px_0_5px_rgba(0,0,0,0.03)]">
+                    <div className="w-[160px] flex-shrink-0 bg-surface-container-low/50 border-r border-outline-variant flex items-center justify-center sticky left-0 z-20 shadow-sm">
                       <span className="font-bold text-lg text-on-surface-variant">{hari}</span>
                     </div>
 
@@ -663,38 +745,19 @@ export default function InteractiveSchedulePage() {
                             {/* Drop Zones / Background Grid */}
                             <div className="flex">
                               {timeLabels.map((time, idx) => {
-                                // Find actual slot ID for this specific day and time
                                 const actualSlot = slots.find(s => s.hari === hari && s.jamMulai === time.start);
-                                const isValidSlot = !!actualSlot;
-                                const isDropValid = draggedItem && actualSlot && validDropZones.has(`${hari}-${roomId}-${actualSlot.id}`);
-
                                 return (
-                                  <div 
-                                    key={idx} 
-                                    style={{ width: SLOT_WIDTH * zoomLevel }} 
-                                    onDragOver={(e) => {
-                                      if (!isValidSlot) return; 
-                                      if (isDropValid) e.preventDefault();
-                                    }}
-                                    onDrop={(e) => {
-                                      if (isValidSlot && isDropValid) handleDrop(e, hari, actualSlot.id, roomId);
-                                    }}
-                                    className={`flex-shrink-0 border-r border-outline-variant/5 transition-colors relative
-                                      ${!isValidSlot ? "bg-surface-variant/20" : ""}
-                                      ${isDropValid ? "bg-green-100/40 ring-2 ring-green-400/60 inset animate-pulse" : draggedItem && isValidSlot ? "bg-red-50/30 ring-1 ring-red-200/40 inset cursor-not-allowed" : "hover:bg-surface-variant/5"}
-                                    `}
-                                  >
-                                    {isDropValid && (
-                                      <div className="absolute inset-1 border-2 border-dashed border-green-400 rounded-lg opacity-60 flex items-center justify-center text-green-600 text-xs font-bold pointer-events-none z-10">
-                                        <span className="material-symbols-outlined text-sm mr-1">add_circle</span> Drop
-                                      </div>
-                                    )}
-                                    {!isValidSlot && (
-                                      <div className="w-full h-full flex items-center justify-center opacity-20 pointer-events-none">
-                                        <span className="material-symbols-outlined">block</span>
-                                      </div>
-                                    )}
-                                  </div>
+                                  <GridCell
+                                    key={`${hari}-${roomId}-${idx}`}
+                                    hari={hari}
+                                    roomId={roomId}
+                                    actualSlot={actualSlot}
+                                    draggedItem={draggedItem}
+                                    checkAvailability={checkAvailability}
+                                    zoomLevel={zoomLevel}
+                                    handleDrop={handleDrop}
+                                    SLOT_WIDTH={SLOT_WIDTH}
+                                  />
                                 );
                               })}
                             </div>
@@ -1066,8 +1129,44 @@ export default function InteractiveSchedulePage() {
   );
 }
 
+// Subcomponent for grid cell to optimize rendering
+const GridCell = memo(function GridCell({ hari, roomId, actualSlot, draggedItem, checkAvailability, zoomLevel, handleDrop, SLOT_WIDTH }: any) {
+  const isValidSlot = !!actualSlot;
+  const isDropValid = useMemo(() => {
+    return draggedItem && actualSlot && checkAvailability(draggedItem, actualSlot.id, roomId);
+  }, [draggedItem, actualSlot, roomId, checkAvailability]);
+
+  return (
+    <div 
+      style={{ width: SLOT_WIDTH * zoomLevel }} 
+      onDragOver={(e) => {
+        if (!isValidSlot) return; 
+        if (isDropValid) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (isValidSlot && isDropValid) handleDrop(e, hari, actualSlot.id, roomId);
+      }}
+      className={`flex-shrink-0 border-r border-outline-variant/5 transition-colors relative
+        ${!isValidSlot ? "bg-surface-variant/10" : ""}
+        ${isDropValid ? "bg-green-100/40 ring-1 ring-green-400/50 inset" : draggedItem && isValidSlot ? "bg-red-50/20 cursor-not-allowed" : "hover:bg-surface-variant/5"}
+      `}
+    >
+      {isDropValid && (
+        <div className="absolute inset-1 border-2 border-dashed border-green-400 rounded-lg opacity-60 flex items-center justify-center text-green-600 text-xs font-bold pointer-events-none z-10">
+          <span className="material-symbols-outlined text-sm mr-1">add_circle</span> Drop
+        </div>
+      )}
+      {!isValidSlot && (
+        <div className="w-full h-full flex items-center justify-center opacity-20 pointer-events-none">
+          <span className="material-symbols-outlined">block</span>
+        </div>
+      )}
+    </div>
+  );
+});
+
 // Subcomponent to optimize rendering and prevent global updates on hover
-function CourseBlock({ course, zoomLevel, SLOT_WIDTH, startIdx, sks, isConflicting, conflictReasons, prodiColor, roomName, layer, isDragged, onDragStart, onDragEnd, onSelect }: any) {
+const CourseBlock = memo(function CourseBlock({ course, zoomLevel, SLOT_WIDTH, startIdx, sks, isConflicting, conflictReasons, prodiColor, roomName, layer, isDragged, onDragStart, onDragEnd, onSelect }: any) {
   const [isHovered, setIsHovered] = useState(false);
   const left = startIdx * (SLOT_WIDTH * zoomLevel);
   const width = sks * (SLOT_WIDTH * zoomLevel) - 8;
@@ -1092,12 +1191,12 @@ function CourseBlock({ course, zoomLevel, SLOT_WIDTH, startIdx, sks, isConflicti
       onFocus={() => setIsHovered(true)}
       onBlur={() => setIsHovered(false)}
       style={{ left: left + 4, width, top: topOffset, bottom: 8, zIndex }}
-      className={`absolute rounded-lg border p-3 cursor-grab active:cursor-grabbing transition-all duration-200
-        ${isHovered ? "scale-[1.02] z-50 shadow-lg" : "overflow-hidden"}
+      className={`absolute rounded-lg border p-3 cursor-grab active:cursor-grabbing transition-[transform,shadow,opacity] duration-200
+        ${isHovered ? "scale-[1.01] z-50 shadow-md" : "overflow-hidden shadow-sm"}
         ${isDragged ? "opacity-30 grayscale" : "opacity-100"}
         ${isConflicting 
-          ? "bg-red-50 border-red-400 text-red-900 shadow-[0_0_10px_rgba(239,68,68,0.2)] ring-1 ring-red-400/50" 
-          : `${prodiColor.bg} ${prodiColor.border} ${prodiColor.text} ${prodiColor.shadow}`}
+          ? "bg-red-50 border-red-400 text-red-900 shadow-red-100" 
+          : `${prodiColor.bg} ${prodiColor.border} ${prodiColor.text}`}
       `}
     >
       <div className="flex flex-col h-full justify-between pointer-events-none">
@@ -1152,4 +1251,4 @@ function CourseBlock({ course, zoomLevel, SLOT_WIDTH, startIdx, sks, isConflicti
       )}
     </div>
   );
-}
+});

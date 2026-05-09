@@ -367,19 +367,29 @@ export async function updateSlot(req: Request, res: Response) {
       include: { mataKuliah: true }
     });
 
+    // Optimized conflict calculation using map
+    const slotMap = new Map<number, any[]>();
+    allDetails.forEach(d => {
+      if (!slotMap.has(d.idSlotWaktu)) slotMap.set(d.idSlotWaktu, []);
+      slotMap.get(d.idSlotWaktu)!.push(d);
+    });
+
     let conflictCount = 0;
-    for (let i = 0; i < allDetails.length; i++) {
-      for (let j = i + 1; j < allDetails.length; j++) {
-        const d1 = allDetails[i];
-        const d2 = allDetails[j];
-        if (d1.idSlotWaktu !== d2.idSlotWaktu) continue;
+    for (const details of slotMap.values()) {
+      if (details.length < 2) continue;
+      for (let i = 0; i < details.length; i++) {
+        for (let j = i + 1; j < details.length; j++) {
+          const d1 = details[i];
+          const d2 = details[j];
 
-        const isRoomClash = d1.idRuangan === d2.idRuangan;
-        const isDosenClash = d1.idDosen === d2.idDosen;
-        const isSemesterClash = d1.mataKuliah?.idProdi === d2.mataKuliah?.idProdi && d1.mataKuliah?.semester === d2.mataKuliah?.semester;
+          const isRoomClash = d1.idRuangan === d2.idRuangan;
+          const isDosenClash = d1.idDosen === d2.idDosen;
+          const isSemesterClash = d1.mataKuliah?.idProdi === d2.mataKuliah?.idProdi && 
+                                d1.mataKuliah?.semester === d2.mataKuliah?.semester;
 
-        if (isRoomClash || isDosenClash || isSemesterClash) {
-          conflictCount++;
+          if (isRoomClash || isDosenClash || isSemesterClash) {
+            conflictCount++;
+          }
         }
       }
     }
