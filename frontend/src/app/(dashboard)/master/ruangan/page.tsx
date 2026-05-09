@@ -51,7 +51,13 @@ export default function RuanganPage() {
   
   const del = useMutation({ 
     mutationFn: (id: number) => api.deleteRuangan(id), 
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ruangan"] }) 
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ruangan"] });
+      alert("Ruangan berhasil dihapus");
+    },
+    onError: (error: any) => {
+      alert(error.message || "Gagal menghapus ruangan");
+    }
   });
 
   const openCreate = () => { 

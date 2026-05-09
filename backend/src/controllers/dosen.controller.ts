@@ -74,7 +74,11 @@ export async function remove(req: Request, res: Response) {
   try {
     await prisma.dosen.delete({ where: { id: Number(req.params.id) } });
     res.json({ message: "Dosen berhasil dihapus" });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.code === 'P2003') {
+      res.status(400).json({ error: "Dosen tidak dapat dihapus karena sedang digunakan dalam jadwal atau data lain." });
+      return;
+    }
     console.error("Error in remove Dosen:", error);
     res.status(500).json({ error: "Internal server error" });
   }
