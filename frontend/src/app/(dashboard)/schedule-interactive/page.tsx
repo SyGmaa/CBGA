@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { connectSocket, disconnectSocket } from "@/lib/socket";
 import { useAppStore } from "@/store/useAppStore";
 import type { JadwalMaster, JadwalDetail, GAProgress, SlotWaktu, Ruangan, PreferensiWaktuDosen } from "@/types";
+import ExcelJS from "exceljs";
 
 const HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const SLOT_WIDTH = 160; // px
@@ -563,6 +564,186 @@ export default function InteractiveSchedulePage() {
     setLastMove(null);
   };
 
+  const handleExportExcel = async () => {
+    if (!result || !result.jadwalDetail || sessions.length === 0) {
+      alert("Tidak ada data jadwal untuk diekspor.");
+      return;
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'CBGA Scheduler';
+      
+      const colors = ["E3F2FD", "F3E5F5", "E8F5E9", "FFF3E0", "F1F8E9", "FFFDE7", "E0F2F1", "FCE4EC", "F5F5F5"];
+      const sheetNames = new Set<string>();
+
+      const getUniqueSafeName = (name: string) => {
+        let safe = String(name).replace(/[\\/?*\[\]:]/g, "").substring(0, 31);
+        if (!safe) safe = "Sheet";
+        let finalName = safe;
+        let counter = 1;
+        while (sheetNames.has(finalName.toLowerCase())) {
+          const suffix = ` (${counter})`;
+          finalName = safe.substring(0, 31 - suffix.length) + suffix;
+          counter++;
+        }
+        sheetNames.add(finalName.toLowerCase());
+        return finalName;
+      };
+
+      const appendGridTable = (worksheet: ExcelJS.Worksheet, startRowIdx: number, dataSessions: typeof sessions, rowType: 'ROOM' | 'SEMESTER', title?: string) => {
+        let currentRowIdx = startRowIdx;
+
+        // 1. Add Title Row if provided
+        if (title) {
+          const titleRow = worksheet.getRow(currentRowIdx);
+          titleRow.height = 30;
+          const titleCell = titleRow.getCell(1);
+          titleCell.value = title;
+          titleCell.font = { bold: true, size: 14, color: { argb: 'FF1A237E' } };
+          titleCell.alignment = { vertical: 'middle' };
+          worksheet.mergeCells(currentRowIdx, 1, currentRowIdx, 5);
+          currentRowIdx++;
+        }
+
+        // 2. Setup Columns (Only if first table or we want to re-header)
+        // We always re-header for clarity between semesters
+        const headerRow = worksheet.getRow(currentRowIdx);
+        headerRow.height = 25;
+        
+        const colHeaders = ['Hari', rowType === 'ROOM' ? 'Ruangan' : 'Semester'];
+        timeLabels.forEach(t => colHeaders.push(`${t.start} - ${t.end}`));
+        
+        colHeaders.forEach((h, i) => {
+          const cell = headerRow.getCell(i + 1);
+          cell.value = h;
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3F51B5' } };
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        currentRowIdx++;
+
+        // 3. Data Population
+        HARI.forEach(day => {
+          const daySessions = dataSessions.filter(s => s.slotWaktu?.hari === day);
+          if (daySessions.length === 0) return;
+
+          const rowHeaders = Array.from(new Set(daySessions.map(s => 
+            rowType === 'ROOM' 
+              ? (s.ruangan?.namaRuangan || `Ruangan ${s.idRuangan}`) 
+              : `Semester ${s.mataKuliah?.semester}`
+          ))).sort();
+
+          rowHeaders.forEach((header) => {
+            const row = worksheet.getRow(currentRowIdx);
+            row.height = 70;
+            
+            const cellHari = row.getCell(1);
+            const cellHeader = row.getCell(2);
+            cellHari.value = day;
+            cellHeader.value = header;
+            
+            [cellHari, cellHeader].forEach(c => {
+              c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+              c.font = { bold: true };
+              c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
+              c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            });
+
+            const sessionsInRow = daySessions.filter(s => 
+              (rowType === 'ROOM' 
+                ? (s.ruangan?.namaRuangan || `Ruangan ${s.idRuangan}`) 
+                : `Semester ${s.mataKuliah?.semester}`) === header
+            );
+
+            sessionsInRow.forEach(session => {
+              const startIdx = getSlotIndex(session.slotWaktu?.jamMulai || "");
+              if (startIdx === -1) return;
+              
+              const colIdx = startIdx + 3;
+              const sks = session.sksTotal || session.mataKuliah?.sks || 1;
+              const cell = row.getCell(colIdx);
+              
+              cell.value = `${session.mataKuliah?.namaMk}\n(${session.mataKuliah?.kodeMk})\n${session.dosen?.namaDosen}\n${rowType === 'ROOM' ? (session.mataKuliah?.prodi?.namaProdi) : (session.ruangan?.namaRuangan)}`;
+              cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+              cell.font = { size: 9, bold: true };
+              
+              const prodiId = session.mataKuliah?.idProdi || 0;
+              const bgColor = colors[prodiId % colors.length];
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + bgColor } };
+
+              const hasConflict = conflictMap.has(session.id);
+              cell.border = {
+                top: { style: hasConflict ? 'thick' : 'thin', color: { argb: hasConflict ? 'FFFF0000' : 'FF000000' } },
+                left: { style: hasConflict ? 'thick' : 'thin', color: { argb: hasConflict ? 'FFFF0000' : 'FF000000' } },
+                bottom: { style: hasConflict ? 'thick' : 'thin', color: { argb: hasConflict ? 'FFFF0000' : 'FF000000' } },
+                right: { style: hasConflict ? 'thick' : 'thin', color: { argb: hasConflict ? 'FFFF0000' : 'FF000000' } },
+              };
+              if (hasConflict) cell.font = { ...cell.font, color: { argb: 'FFB71C1C' } };
+
+              if (sks > 1) {
+                try { worksheet.mergeCells(currentRowIdx, colIdx, currentRowIdx, colIdx + sks - 1); } catch(e) {}
+              }
+            });
+            currentRowIdx++;
+          });
+          const spacerRow = worksheet.getRow(currentRowIdx);
+          spacerRow.height = 10;
+          currentRowIdx++;
+        });
+
+        return currentRowIdx + 2; // Return next row with gap
+      };
+
+      // 3. Create Sheets
+      // Sheet 1: Semua Jadwal
+      const wsAll = workbook.addWorksheet(getUniqueSafeName("Semua Jadwal (Grid)"));
+      // Setup column widths once
+      wsAll.columns = [
+        { width: 15 }, { width: 20 }, ...timeLabels.map(() => ({ width: 25 }))
+      ];
+      appendGridTable(wsAll, 1, sessions, 'ROOM');
+      wsAll.views = [{ state: 'frozen', xSplit: 2, ySplit: 1 }];
+
+      // Sheet per Prodi, Tables inside per Semester
+      const prodiNames = Array.from(new Set(sessions.map(s => s.mataKuliah?.prodi?.namaProdi).filter(Boolean)));
+      
+      prodiNames.forEach(prodiName => {
+        const wsProdi = workbook.addWorksheet(getUniqueSafeName(String(prodiName)));
+        wsProdi.columns = [
+          { width: 15 }, { width: 20 }, ...timeLabels.map(() => ({ width: 25 }))
+        ];
+        
+        const prodiSessions = sessions.filter(s => s.mataKuliah?.prodi?.namaProdi === prodiName);
+        const semesters = Array.from(new Set(prodiSessions.map(s => s.mataKuliah?.semester).filter(Boolean))).sort((a, b) => Number(a) - Number(b));
+        
+        let nextRowIdx = 1;
+        semesters.forEach(sem => {
+          const semesterSessions = prodiSessions.filter(s => s.mataKuliah?.semester === sem);
+          nextRowIdx = appendGridTable(wsProdi, nextRowIdx, semesterSessions, 'ROOM', `Semester ${sem}`);
+        });
+        
+        wsProdi.views = [{ state: 'frozen', xSplit: 2, ySplit: 0 }]; // Only freeze side headers for prodi sheets
+      });
+
+      // 4. Export
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      const safeFileName = `Jadwal_Visual_${result.tahunAkademik}_${result.semesterTipe}`.replace(/[\\/:*?"<>|]/g, '-');
+      anchor.download = `${safeFileName}.xlsx`;
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+
+    } catch (error: any) {
+      console.error("Export error:", error);
+      alert("Gagal mengekspor data ke Excel: " + (error.message || "Terjadi kesalahan sistem."));
+    }
+  };
+
   return (
     <>
       <div className="min-h-screen bg-surface-bright p-6 animate-fade-in">
@@ -635,6 +816,15 @@ export default function InteractiveSchedulePage() {
               Tampilkan Semua Ruangan
             </label>
             
+            <button 
+              onClick={handleExportExcel} 
+              disabled={!result || isResultLoading}
+              className="px-6 py-2.5 bg-green-600 text-white font-bold text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md"
+            >
+              <span className="material-symbols-outlined text-[18px]">download</span>
+              Export Excel
+            </button>
+
             <button onClick={() => setShowGenerate(true)} className="px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-lg hover:bg-primary/90 active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md">
               <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
               Generate Jadwal
