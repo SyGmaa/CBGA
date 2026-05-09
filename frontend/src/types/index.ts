@@ -120,6 +120,7 @@ export interface GAProgress {
   maxGenerasi: number;
   bestFitness: number;
   bestPenalty: number;
+  conflictCount: number;
   currentFitness: number;
   status: string;
 }

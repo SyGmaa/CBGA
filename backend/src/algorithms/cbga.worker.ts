@@ -89,7 +89,7 @@ let lastBestFitness = 0;
 // ============================================================
 // Initialize Population (Smart Initialization)
 // ============================================================
-let population: { kromosom: Kromosom; fitness: number; penalty: number }[] = [];
+let population: { kromosom: Kromosom; fitness: number; penalty: number; conflictCount: number }[] = [];
 
 for (let i = 0; i < config.populationSize; i++) {
   const kromosom = generateRandomKromosom(
@@ -105,6 +105,7 @@ for (let i = 0; i < config.populationSize; i++) {
     kromosom,
     fitness: result.fitness,
     penalty: result.penalty,
+    conflictCount: result.conflicts.length,
   });
 }
 
@@ -155,6 +156,7 @@ for (let gen = 0; gen < config.maxGenerations; gen++) {
       kromosom: child1,
       fitness: result1.fitness,
       penalty: result1.penalty,
+      conflictCount: result1.conflicts.length,
     });
 
     if (newPopulation.length < config.populationSize) {
@@ -162,6 +164,7 @@ for (let gen = 0; gen < config.maxGenerations; gen++) {
         kromosom: child2,
         fitness: result2.fitness,
         penalty: result2.penalty,
+        conflictCount: result2.conflicts.length,
       });
     }
   }
@@ -209,6 +212,7 @@ for (let gen = 0; gen < config.maxGenerations; gen++) {
         kromosom: repairedKromosom,
         fitness: result.fitness,
         penalty: result.penalty,
+        conflictCount: result.conflicts.length,
       };
     }
 
@@ -228,6 +232,7 @@ for (let gen = 0; gen < config.maxGenerations; gen++) {
         maxGenerasi: config.maxGenerations,
         bestFitness: bestEver.fitness,
         bestPenalty: bestEver.penalty,
+        conflictCount: bestEver.conflictCount,
         currentFitness: currentBest.fitness,
         mutationRate: currentMutationRate,
         stagnation: stagnationCounter,

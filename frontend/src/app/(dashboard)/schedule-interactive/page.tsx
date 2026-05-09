@@ -1243,30 +1243,53 @@ export default function InteractiveSchedulePage() {
             {gaProgress ? "Mengevaluasi mutasi pada populasi..." : "Menginisialisasi data dan memulai komputasi..."}
           </p>
           
-          <div className="w-full bg-surface-variant rounded-full h-3 mb-2 overflow-hidden mt-4">
+          <div className="w-full bg-surface-variant rounded-full h-3 mb-2 overflow-hidden mt-6 relative">
             {gaProgress ? (
               <div 
-                className="bg-primary h-3 rounded-full transition-all duration-300" 
+                className="bg-primary h-3 rounded-full transition-all duration-500 ease-out shadow-[0_0_10px_rgba(var(--primary-rgb),0.5)]" 
                 style={{ width: `${(gaProgress.generasi / gaProgress.maxGenerasi) * 100}%` }}
               ></div>
             ) : (
               <div className="bg-primary h-3 rounded-full animate-pulse w-[15%]"></div>
             )}
           </div>
-          <div className="w-full flex justify-between text-xs text-on-surface-variant font-mono mt-1">
-            {gaProgress ? (
-              <>
-                <span>Generasi {gaProgress.generasi}/{gaProgress.maxGenerasi}</span>
-                <span>{Math.round((gaProgress.generasi / gaProgress.maxGenerasi) * 100)}%</span>
-              </>
-            ) : (
-              <>
-                <span>Memuat data...</span>
-                <span>0%</span>
-              </>
-            )}
+          
+          <div className="w-full flex justify-between text-[10px] text-on-surface-variant font-black uppercase tracking-widest px-1">
+            <span>Progress</span>
+            <span>{gaProgress ? Math.round((gaProgress.generasi / gaProgress.maxGenerasi) * 100) : 0}%</span>
           </div>
-          <p className="text-[11px] text-outline italic mt-4">Mohon tunggu, komputasi algoritma membutuhkan waktu beberapa saat.</p>
+
+          <div className="w-full grid grid-cols-2 gap-4 mt-6">
+            <div className="bg-surface-bright p-4 rounded-2xl border border-outline-variant shadow-sm text-left">
+              <div className="flex items-center gap-2 text-on-surface-variant mb-1">
+                <span className="material-symbols-outlined text-[16px]">cycle</span>
+                <span className="text-[10px] font-black uppercase tracking-wider">Generasi</span>
+              </div>
+              <div className="text-xl font-black text-on-surface tabular-nums">
+                {gaProgress ? (
+                  <>{gaProgress.generasi}<span className="text-on-surface-variant/40 text-sm font-bold">/{gaProgress.maxGenerasi}</span></>
+                ) : "0/0"}
+              </div>
+            </div>
+            
+            <div className={`p-4 rounded-2xl border shadow-sm text-left transition-all duration-300 ${gaProgress && gaProgress.conflictCount === 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+              <div className={`flex items-center gap-2 mb-1 ${gaProgress && gaProgress.conflictCount === 0 ? 'text-green-700' : 'text-red-700'}`}>
+                <span className="material-symbols-outlined text-[16px]">{gaProgress && gaProgress.conflictCount === 0 ? 'check_circle' : 'warning'}</span>
+                <span className="text-[10px] font-black uppercase tracking-wider">Konflik</span>
+              </div>
+              <div className={`text-xl font-black tabular-nums ${gaProgress && gaProgress.conflictCount === 0 ? 'text-green-700' : 'text-red-700'}`}>
+                {gaProgress ? gaProgress.conflictCount : "0"}
+              </div>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-outline italic mt-8 bg-surface-variant/20 px-4 py-2 rounded-full border border-outline-variant/30">
+            {gaProgress ? (
+              gaProgress.conflictCount === 0 
+                ? "✨ Solusi optimal ditemukan! Memfinalisasi data..." 
+                : "Sedang mengoptimalkan jadwal..."
+            ) : "Mempersiapkan mesin kecerdasan buatan..."}
+          </p>
         </div>
       </div>
     )}
