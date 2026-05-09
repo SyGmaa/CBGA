@@ -24,7 +24,7 @@ export default function InteractiveSchedulePage() {
   const [showAllRooms, setShowAllRooms] = useState(false);
   const [showGenerate, setShowGenerate] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [genForm, setGenForm] = useState({ tahunAkademik: "2025/2026", semesterTipe: "Ganjil", jumlahJadwal: 10, maxGenerasi: 500 });
+  const [genForm, setGenForm] = useState({ tahunAkademik: "2025/2026", semesterTipe: "Ganjil", jumlahJadwal: 1, maxGenerasi: 500 });
   const [showManage, setShowManage] = useState(false);
   const [selectedForDelete, setSelectedForDelete] = useState<number[]>([]);
   
@@ -1328,7 +1328,7 @@ export default function InteractiveSchedulePage() {
                 max="1000"
                 className="w-full px-3 py-2 border border-outline-variant rounded-lg bg-surface-bright text-on-surface focus:outline-none focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 text-sm" 
                 value={genForm.jumlahJadwal} 
-                onChange={e => setGenForm({...genForm, jumlahJadwal: parseInt(e.target.value) || 10})} 
+                onChange={e => setGenForm({...genForm, jumlahJadwal: parseInt(e.target.value) || 1})} 
                 required 
               />
             </div>
