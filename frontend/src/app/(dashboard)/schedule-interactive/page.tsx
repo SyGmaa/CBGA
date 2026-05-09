@@ -24,6 +24,8 @@ export default function InteractiveSchedulePage() {
   const [showGenerate, setShowGenerate] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [genForm, setGenForm] = useState({ tahunAkademik: "2025/2026", semesterTipe: "Ganjil", jumlahJadwal: 10, maxGenerasi: 500 });
+  const [showManage, setShowManage] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState<number[]>([]);
   
   // New States for UX Improvements
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -143,6 +145,17 @@ export default function InteractiveSchedulePage() {
     onMutate: () => { setIsGenerating(true); setShowGenerate(false); },
     onSuccess: (data: any) => { setSelectedId(data.jadwalMasterId); },
     onError: (error: any) => { setIsGenerating(false); alert(error.message || "Gagal menghubungi server/database."); },
+  });
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: (ids: number[]) => api.bulkDeleteSchedules(ids),
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: ["schedules"] }); 
+      setSelectedForDelete([]);
+      setSelectedId(null);
+      setShowManage(false);
+    },
+    onError: (error: any) => alert(error.message || "Gagal menghapus jadwal massal."),
   });
 
   // Socket.io for real-time progress
@@ -551,7 +564,8 @@ export default function InteractiveSchedulePage() {
   };
 
   return (
-    <div className="min-h-screen bg-surface-bright p-6 animate-fade-in">
+    <>
+      <div className="min-h-screen bg-surface-bright p-6 animate-fade-in">
       {/* Header & Controls Section */}
       <div className="mb-8 space-y-6">
         <div>
@@ -586,20 +600,29 @@ export default function InteractiveSchedulePage() {
               <span className="text-xs font-bold uppercase tracking-wider">Kontrol:</span>
             </div>
 
-            <div className="relative min-w-[280px]">
-              <select 
-                value={selectedId || ""}
-                onChange={(e) => setSelectedId(Number(e.target.value))}
-                className="w-full appearance-none bg-surface-container-lowest border border-outline-variant rounded-lg pl-3 pr-10 py-2.5 text-on-surface font-body-base text-sm shadow-inner focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all"
+            <div className="flex items-center gap-2">
+              <div className="relative min-w-[280px]">
+                <select 
+                  value={selectedId || ""}
+                  onChange={(e) => setSelectedId(Number(e.target.value))}
+                  className="w-full appearance-none bg-surface-container-lowest border border-outline-variant rounded-lg pl-3 pr-10 py-2.5 text-on-surface font-body-base text-sm shadow-inner focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all"
+                >
+                  <option value="" disabled>Pilih Jadwal Master...</option>
+                  {schedules.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.tahunAkademik} {s.semesterTipe} - {s.status}{s.id === selectedId && liveConflictCount > 0 ? ` ⚠ ${liveConflictCount} konflik terdeteksi` : s.conflictCount ? ` (Konflik: ${s.conflictCount})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+              </div>
+              <button 
+                onClick={() => setShowManage(true)}
+                className="p-2.5 border border-outline-variant rounded-lg text-error hover:bg-error-container/20 transition-all shadow-sm flex items-center justify-center group"
+                title="Kelola Jadwal (Hapus)"
               >
-                <option value="" disabled>Pilih Jadwal Master...</option>
-                {schedules.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.tahunAkademik} {s.semesterTipe} - {s.status}{s.id === selectedId && liveConflictCount > 0 ? ` ⚠ ${liveConflictCount} konflik terdeteksi` : s.conflictCount ? ` (Konflik: ${s.conflictCount})` : ''}
-                  </option>
-                ))}
-              </select>
-              <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+                <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">delete</span>
+              </button>
             </div>
 
             <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer bg-surface-container-lowest border border-outline-variant px-3 py-2.5 rounded-lg shadow-sm hover:bg-surface-variant/20 transition-all">
@@ -828,304 +851,432 @@ export default function InteractiveSchedulePage() {
           </button>
         </div>
       )}
+    </div>
 
-      {/* Detail Modal */}
-      {selectedCourse && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 animate-fade-in sm:p-6" onClick={() => setSelectedCourse(null)}>
-          {/* Backdrop with blur */}
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"></div>
-          
-          {/* Modal Container */}
-          <div 
-            className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden transform transition-all animate-slide-up border border-slate-200"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Header Section (Color coded based on conflict/prodi) */}
-            <div className={`px-6 py-8 relative overflow-hidden ${conflictMap.has(selectedCourse.id) ? 'bg-red-50' : 'bg-primary/5'}`}>
-              {/* Decorative Background Elements */}
-              <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-32 h-32 bg-primary/10 rounded-full blur-2xl"></div>
+    {/* Detail Modal */}
+    {selectedCourse && (
+      <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 animate-fade-in sm:p-6" onClick={() => setSelectedCourse(null)}>
+        {/* Backdrop with blur */}
+        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"></div>
+        
+        {/* Modal Container */}
+        <div 
+          className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden transform transition-all animate-slide-up border border-slate-200"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header Section (Color coded based on conflict/prodi) */}
+          <div className={`px-6 py-8 relative overflow-hidden ${conflictMap.has(selectedCourse.id) ? 'bg-red-50' : 'bg-primary/5'}`}>
+            {/* Decorative Background Elements */}
+            <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-32 h-32 bg-primary/10 rounded-full blur-2xl"></div>
+            
+            <button 
+              onClick={() => setSelectedCourse(null)}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center bg-white/50 hover:bg-white text-slate-500 hover:text-slate-700 rounded-full transition-all shadow-sm backdrop-blur-md"
+            >
+              <span className="material-symbols-outlined text-sm">close</span>
+            </button>
+
+            <div className="relative z-10 flex flex-col gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-1 bg-primary text-white rounded-md text-xs font-bold tracking-wider shadow-sm">
+                  {selectedCourse.mataKuliah?.kodeMk}
+                </span>
+                <span className="px-2.5 py-1 bg-white text-slate-700 border border-slate-200 rounded-md text-xs font-bold shadow-sm">
+                  {selectedCourse.sksTotal || selectedCourse.mataKuliah?.sks} SKS
+                </span>
+                <span className="px-2.5 py-1 bg-white text-slate-700 border border-slate-200 rounded-md text-xs font-bold shadow-sm">
+                  Sem {selectedCourse.mataKuliah?.semester}
+                </span>
+                <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-xs font-bold shadow-sm">
+                  {selectedCourse.mataKuliah?.prodi?.namaProdi}
+                </span>
+              </div>
               
-              <button 
-                onClick={() => setSelectedCourse(null)}
-                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center bg-white/50 hover:bg-white text-slate-500 hover:text-slate-700 rounded-full transition-all shadow-sm backdrop-blur-md"
-              >
-                <span className="material-symbols-outlined text-sm">close</span>
-              </button>
+              <h3 className="text-2xl font-extrabold text-slate-900 leading-tight">
+                {selectedCourse.mataKuliah?.namaMk}
+              </h3>
+            </div>
+          </div>
 
-              <div className="relative z-10 flex flex-col gap-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-2.5 py-1 bg-primary text-white rounded-md text-xs font-bold tracking-wider shadow-sm">
-                    {selectedCourse.mataKuliah?.kodeMk}
-                  </span>
-                  <span className="px-2.5 py-1 bg-white text-slate-700 border border-slate-200 rounded-md text-xs font-bold shadow-sm">
-                    {selectedCourse.sksTotal || selectedCourse.mataKuliah?.sks} SKS
-                  </span>
-                  <span className="px-2.5 py-1 bg-white text-slate-700 border border-slate-200 rounded-md text-xs font-bold shadow-sm">
-                    Sem {selectedCourse.mataKuliah?.semester}
-                  </span>
-                  <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-xs font-bold shadow-sm">
-                    {selectedCourse.mataKuliah?.prodi?.namaProdi}
-                  </span>
+          {/* Content Section */}
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              {/* Information Cards */}
+              <div className="space-y-4">
+                <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-colors hover:border-primary/30">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                    <span className="material-symbols-outlined">person</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Dosen Pengampu</p>
+                    <p className="font-bold text-slate-900">{selectedCourse.dosen?.namaDosen}</p>
+                  </div>
                 </div>
-                
-                <h3 className="text-2xl font-extrabold text-slate-900 leading-tight">
-                  {selectedCourse.mataKuliah?.namaMk}
-                </h3>
+
+                <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-colors hover:border-primary/30">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                    <span className="material-symbols-outlined">meeting_room</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Ruangan</p>
+                    <p className="font-bold text-slate-900 flex items-center gap-2">
+                      {rooms.find(r => r.id === selectedCourse.idRuangan)?.namaRuangan}
+                      <span className="px-2 py-0.5 rounded bg-slate-200 text-[10px] text-slate-600 font-medium">Kap: {rooms.find(r => r.id === selectedCourse.idRuangan)?.kapasitas}</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-colors hover:border-primary/30">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                    <span className="material-symbols-outlined">schedule</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Waktu</p>
+                    <p className="font-bold text-slate-900">{selectedCourse.slotWaktu?.hari}</p>
+                    <p className="text-sm text-slate-600 mt-0.5">{selectedCourse.slotWaktu?.jamMulai} - {selectedCourse.slotWaktu?.jamSelesai}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-colors hover:border-primary/30">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
+                    <span className="material-symbols-outlined">groups</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Jumlah Mahasiswa</p>
+                    <p className="font-bold text-slate-900">{selectedCourse.mataKuliah?.jumlahMhs || 0} Orang</p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Content Section */}
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
-                {/* Information Cards */}
-                <div className="space-y-4">
-                  <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-colors hover:border-primary/30">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                      <span className="material-symbols-outlined">person</span>
+            {/* Conflict Status & Suggestions */}
+            <div className="mt-6 space-y-6">
+              {conflictMap.has(selectedCourse.id) ? (
+                <>
+                  <div className="bg-red-50 border-l-4 border-red-500 rounded-r-xl p-4 shadow-sm">
+                    <div className="flex items-center gap-2 text-red-700 font-bold mb-3">
+                      <span className="material-symbols-outlined">error</span>
+                      <h3>Konflik Terdeteksi</h3>
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Dosen Pengampu</p>
-                      <p className="font-bold text-slate-900">{selectedCourse.dosen?.namaDosen}</p>
-                    </div>
+                    <ul className="space-y-2">
+                      {conflictMap.get(selectedCourse.id)?.map((reason, idx) => (
+                        <li key={idx} className="flex items-start gap-2 text-sm text-red-800">
+                          <span className="material-symbols-outlined text-[16px] mt-0.5 opacity-70">arrow_right</span>
+                          <span>{reason}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
 
-                  <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-colors hover:border-primary/30">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
-                      <span className="material-symbols-outlined">meeting_room</span>
+                  {/* Move Suggestions Section */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-slate-800 font-bold px-1">
+                      <span className="material-symbols-outlined text-primary">auto_awesome</span>
+                      <h3>Saran Perpindahan Jadwal</h3>
+                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold ml-auto">Bebas Konflik</span>
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Ruangan</p>
-                      <p className="font-bold text-slate-900 flex items-center gap-2">
-                        {rooms.find(r => r.id === selectedCourse.idRuangan)?.namaRuangan}
-                        <span className="px-2 py-0.5 rounded bg-slate-200 text-[10px] text-slate-600 font-medium">Kap: {rooms.find(r => r.id === selectedCourse.idRuangan)?.kapasitas}</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-colors hover:border-primary/30">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
-                      <span className="material-symbols-outlined">schedule</span>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Waktu</p>
-                      <p className="font-bold text-slate-900">{selectedCourse.slotWaktu?.hari}</p>
-                      <p className="text-sm text-slate-600 mt-0.5">{selectedCourse.slotWaktu?.jamMulai} - {selectedCourse.slotWaktu?.jamSelesai}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 transition-colors hover:border-primary/30">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
-                      <span className="material-symbols-outlined">groups</span>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Jumlah Mahasiswa</p>
-                      <p className="font-bold text-slate-900">{selectedCourse.mataKuliah?.jumlahMhs || 0} Orang</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Conflict Status & Suggestions */}
-              <div className="mt-6 space-y-6">
-                {conflictMap.has(selectedCourse.id) ? (
-                  <>
-                    <div className="bg-red-50 border-l-4 border-red-500 rounded-r-xl p-4 shadow-sm">
-                      <div className="flex items-center gap-2 text-red-700 font-bold mb-3">
-                        <span className="material-symbols-outlined">error</span>
-                        <h3>Konflik Terdeteksi</h3>
-                      </div>
-                      <ul className="space-y-2">
-                        {conflictMap.get(selectedCourse.id)?.map((reason, idx) => (
-                          <li key={idx} className="flex items-start gap-2 text-sm text-red-800">
-                            <span className="material-symbols-outlined text-[16px] mt-0.5 opacity-70">arrow_right</span>
-                            <span>{reason}</span>
-                          </li>
+                    
+                    {moveSuggestions.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {moveSuggestions.map((sug, idx) => (
+                          <div 
+                            key={idx} 
+                            className="group flex flex-col p-3 bg-white border border-slate-200 rounded-xl hover:border-primary hover:shadow-md transition-all cursor-default relative overflow-hidden"
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{sug.hari}</span>
+                              <span className="text-[10px] font-bold text-primary bg-primary/5 px-2 py-0.5 rounded">{sug.roomName}</span>
+                            </div>
+                            <div className="text-sm font-bold text-slate-900 mb-3">
+                              {sug.jamMulai} - {sug.jamSelesai}
+                            </div>
+                            <button 
+                              onClick={() => {
+                                updateSlotMut.mutate({ 
+                                  detailId: selectedCourse.id, 
+                                  data: { idSlotWaktu: sug.slotId, idRuangan: sug.roomId, detailIds: selectedCourse.detailIds } 
+                                });
+                                setSelectedCourse(null);
+                              }}
+                              className="w-full py-2 bg-slate-50 hover:bg-primary hover:text-white text-primary border border-primary/20 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">swap_horiz</span>
+                              Pindahkan Ke Sini
+                            </button>
+                          </div>
                         ))}
-                      </ul>
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500">
+                        <span className="material-symbols-outlined text-3xl mb-2 opacity-30">search_off</span>
+                        <p className="text-xs font-medium text-center px-4">Tidak ditemukan slot kosong yang tersedia.<br/>Coba pindahkan jadwal lain terlebih dahulu.</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-center gap-2 p-4 bg-green-50 text-green-700 rounded-xl border border-green-200">
+                  <span className="material-symbols-outlined">check_circle</span>
+                  <span className="font-bold">Jadwal Sesuai (Tidak ada konflik)</span>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Footer Action */}
+          <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+            <button 
+              onClick={() => setSelectedCourse(null)}
+              className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold transition-colors shadow-md"
+            >
+              Tutup Modal
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
-                    {/* Move Suggestions Section */}
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-slate-800 font-bold px-1">
-                        <span className="material-symbols-outlined text-primary">auto_awesome</span>
-                        <h3>Saran Perpindahan Jadwal</h3>
-                        <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold ml-auto">Bebas Konflik</span>
+    {/* GA Progress Modal */}
+    {(isGenerating || gaProgress) && (
+      <div className="fixed inset-0 z-[1000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+        <div className="bg-surface-container-lowest rounded-xl shadow-2xl border border-outline-variant w-full max-w-md p-6 flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-full bg-primary-container/10 flex items-center justify-center mb-4 text-primary">
+            <span className="material-symbols-outlined text-[32px] spin">settings</span>
+          </div>
+          <h2 className="font-headline-md text-[20px] text-on-surface mb-2">
+            {gaProgress ? "Menyusun Jadwal Optimal..." : "Mempersiapkan Algoritma..."}
+          </h2>
+          <p className="text-on-surface-variant font-label-sm text-sm mb-6">
+            {gaProgress ? "Mengevaluasi mutasi pada populasi..." : "Menginisialisasi data dan memulai komputasi..."}
+          </p>
+          
+          <div className="w-full bg-surface-variant rounded-full h-3 mb-2 overflow-hidden mt-4">
+            {gaProgress ? (
+              <div 
+                className="bg-primary h-3 rounded-full transition-all duration-300" 
+                style={{ width: `${(gaProgress.generasi / gaProgress.maxGenerasi) * 100}%` }}
+              ></div>
+            ) : (
+              <div className="bg-primary h-3 rounded-full animate-pulse w-[15%]"></div>
+            )}
+          </div>
+          <div className="w-full flex justify-between text-xs text-on-surface-variant font-mono mt-1">
+            {gaProgress ? (
+              <>
+                <span>Generasi {gaProgress.generasi}/{gaProgress.maxGenerasi}</span>
+                <span>{Math.round((gaProgress.generasi / gaProgress.maxGenerasi) * 100)}%</span>
+              </>
+            ) : (
+              <>
+                <span>Memuat data...</span>
+                <span>0%</span>
+              </>
+            )}
+          </div>
+          <p className="text-[11px] text-outline italic mt-4">Mohon tunggu, komputasi algoritma membutuhkan waktu beberapa saat.</p>
+        </div>
+      </div>
+    )}
+
+    {/* Generate Schedule Modal */}
+    {showGenerate && !gaProgress && (
+      <div className="fixed inset-0 z-[1000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowGenerate(false)}>
+        <div className="bg-surface-container-lowest rounded-xl shadow-lg border border-outline-variant w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+          <h2 className="font-headline-md text-lg text-on-surface mb-4">Pengaturan Generasi</h2>
+          <form onSubmit={e => { e.preventDefault(); generateMut.mutate(genForm); }} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-on-surface-variant uppercase mb-2">Tahun Akademik</label>
+              <input 
+                className="w-full px-3 py-2 border border-outline-variant rounded-lg bg-surface-bright text-on-surface focus:outline-none focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 text-sm" 
+                value={genForm.tahunAkademik} 
+                onChange={e => setGenForm({...genForm, tahunAkademik: e.target.value})} 
+                required 
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-on-surface-variant uppercase mb-2">Semester</label>
+              <select 
+                className="w-full px-3 py-2 border border-outline-variant rounded-lg bg-surface-bright text-on-surface focus:outline-none focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 text-sm" 
+                value={genForm.semesterTipe} 
+                onChange={e => setGenForm({...genForm, semesterTipe: e.target.value})}
+              >
+                <option value="Ganjil">Ganjil</option>
+                <option value="Genap">Genap</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-on-surface-variant uppercase mb-2">Jumlah Alternatif Jadwal (Max 1000)</label>
+              <input 
+                type="number"
+                min="1"
+                max="1000"
+                className="w-full px-3 py-2 border border-outline-variant rounded-lg bg-surface-bright text-on-surface focus:outline-none focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 text-sm" 
+                value={genForm.jumlahJadwal} 
+                onChange={e => setGenForm({...genForm, jumlahJadwal: parseInt(e.target.value) || 10})} 
+                required 
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-on-surface-variant uppercase mb-2">Batas Generasi (Max 2000)</label>
+              <input 
+                type="number"
+                min="1"
+                max="2000"
+                className="w-full px-3 py-2 border border-outline-variant rounded-lg bg-surface-bright text-on-surface focus:outline-none focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 text-sm" 
+                value={genForm.maxGenerasi} 
+                onChange={e => setGenForm({...genForm, maxGenerasi: parseInt(e.target.value) || 500})} 
+                required 
+              />
+            </div>
+            <div className="flex gap-3 pt-4">
+              <button type="button" onClick={() => setShowGenerate(false)} className="px-4 py-2 border border-outline text-on-surface font-label-sm text-sm font-semibold rounded-lg hover:bg-surface-variant transition-colors flex-1">Batal</button>
+              <button type="submit" disabled={generateMut.isPending} className="px-4 py-2 bg-primary text-on-primary font-label-sm text-sm font-semibold rounded-lg hover:bg-primary-container transition-colors flex-1">{generateMut.isPending ? "Memulai..." : "Generate"}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+
+    {/* Manage/Delete Schedules Modal */}
+    {showManage && (
+      <div className="fixed inset-0 z-[1000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowManage(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+          <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <span className="material-symbols-outlined text-error">manage_accounts</span>
+              Kelola Jadwal
+            </h2>
+            <button onClick={() => setShowManage(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 text-slate-500 transition-colors">
+              <span className="material-symbols-outlined text-sm">close</span>
+            </button>
+          </div>
+          
+          <div className="p-6">
+            <div className="max-h-[350px] overflow-y-auto mb-6 pr-2 custom-scrollbar">
+              {schedules.length === 0 ? (
+                <div className="py-12 flex flex-col items-center justify-center text-slate-400">
+                  <span className="material-symbols-outlined text-4xl mb-2 opacity-20">event_busy</span>
+                  <p className="text-sm font-medium">Tidak ada jadwal tersimpan.</p>
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {schedules.map(s => (
+                    <li 
+                      key={s.id} 
+                      onClick={() => {
+                        if (selectedForDelete.includes(s.id)) setSelectedForDelete(prev => prev.filter(id => id !== s.id));
+                        else setSelectedForDelete(prev => [...prev, s.id]);
+                      }}
+                      className={`flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer ${
+                        selectedForDelete.includes(s.id) 
+                          ? 'bg-error-container/10 border-error/20 ring-1 ring-error/5' 
+                          : 'bg-white border-slate-100 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                        selectedForDelete.includes(s.id) ? 'bg-error border-error text-on-error' : 'border-slate-300 bg-white'
+                      }`}>
+                        {selectedForDelete.includes(s.id) && <span className="material-symbols-outlined text-[14px] font-bold">check</span>}
                       </div>
                       
-                      {moveSuggestions.length > 0 ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {moveSuggestions.map((sug, idx) => (
-                            <div 
-                              key={idx} 
-                              className="group flex flex-col p-3 bg-white border border-slate-200 rounded-xl hover:border-primary hover:shadow-md transition-all cursor-default relative overflow-hidden"
-                            >
-                              <div className="flex justify-between items-start mb-2">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{sug.hari}</span>
-                                <span className="text-[10px] font-bold text-primary bg-primary/5 px-2 py-0.5 rounded">{sug.roomName}</span>
-                              </div>
-                              <div className="text-sm font-bold text-slate-900 mb-3">
-                                {sug.jamMulai} - {sug.jamSelesai}
-                              </div>
-                              <button 
-                                onClick={() => {
-                                  updateSlotMut.mutate({ 
-                                    detailId: selectedCourse.id, 
-                                    data: { idSlotWaktu: sug.slotId, idRuangan: sug.roomId, detailIds: selectedCourse.detailIds } 
-                                  });
-                                  setSelectedCourse(null);
-                                }}
-                                className="w-full py-2 bg-slate-50 hover:bg-primary hover:text-white text-primary border border-primary/20 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2"
-                              >
-                                <span className="material-symbols-outlined text-[14px]">swap_horiz</span>
-                                Pindahkan Ke Sini
-                              </button>
-                            </div>
-                          ))}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate">{s.tahunAkademik} {s.semesterTipe}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                            s.status === 'FINAL' ? 'bg-green-100 text-green-700' : s.status === 'GENERATING' ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            {s.status}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[12px]">warning</span>
+                            {s.conflictCount ?? 0} Konflik
+                          </span>
                         </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500">
-                          <span className="material-symbols-outlined text-3xl mb-2 opacity-30">search_off</span>
-                          <p className="text-xs font-medium text-center px-4">Tidak ditemukan slot kosong yang tersedia.<br/>Coba pindahkan jadwal lain terlebih dahulu.</p>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex items-center justify-center gap-2 p-4 bg-green-50 text-green-700 rounded-xl border border-green-200">
-                    <span className="material-symbols-outlined">check_circle</span>
-                    <span className="font-bold">Jadwal Sesuai (Tidak ada konflik)</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            {/* Footer Action */}
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-              <button 
-                onClick={() => setSelectedCourse(null)}
-                className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold transition-colors shadow-md"
-              >
-                Tutup Modal
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* GA Progress Modal */}
-      {(isGenerating || gaProgress) && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-surface-container-lowest rounded-xl shadow-2xl border border-outline-variant w-full max-w-md p-6 flex flex-col items-center text-center">
-            <div className="w-16 h-16 rounded-full bg-primary-container/10 flex items-center justify-center mb-4 text-primary">
-              <span className="material-symbols-outlined text-[32px] spin">settings</span>
-            </div>
-            <h2 className="font-headline-md text-[20px] text-on-surface mb-2">
-              {gaProgress ? "Menyusun Jadwal Optimal..." : "Mempersiapkan Algoritma..."}
-            </h2>
-            <p className="text-on-surface-variant font-label-sm text-sm mb-6">
-              {gaProgress ? "Mengevaluasi mutasi pada populasi..." : "Menginisialisasi data dan memulai komputasi..."}
-            </p>
-            
-            <div className="w-full bg-surface-variant rounded-full h-3 mb-2 overflow-hidden mt-4">
-              {gaProgress ? (
-                <div 
-                  className="bg-primary h-3 rounded-full transition-all duration-300" 
-                  style={{ width: `${(gaProgress.generasi / gaProgress.maxGenerasi) * 100}%` }}
-                ></div>
-              ) : (
-                <div className="bg-primary h-3 rounded-full animate-pulse w-[15%]"></div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
-            <div className="w-full flex justify-between text-xs text-on-surface-variant font-mono mt-1">
-              {gaProgress ? (
-                <>
-                  <span>Generasi {gaProgress.generasi}/{gaProgress.maxGenerasi}</span>
-                  <span>{Math.round((gaProgress.generasi / gaProgress.maxGenerasi) * 100)}%</span>
-                </>
-              ) : (
-                <>
-                  <span>Memuat data...</span>
-                  <span>0%</span>
-                </>
-              )}
-            </div>
-            <p className="text-[11px] text-outline italic mt-4">Mohon tunggu, komputasi algoritma membutuhkan waktu beberapa saat.</p>
-          </div>
-        </div>
-      )}
 
-      {/* Generate Schedule Modal */}
-      {showGenerate && !gaProgress && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowGenerate(false)}>
-          <div className="bg-surface-container-lowest rounded-xl shadow-lg border border-outline-variant w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-            <h2 className="font-headline-md text-lg text-on-surface mb-4">Pengaturan Generasi</h2>
-            <form onSubmit={e => { e.preventDefault(); generateMut.mutate(genForm); }} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant uppercase mb-2">Tahun Akademik</label>
-                <input 
-                  className="w-full px-3 py-2 border border-outline-variant rounded-lg bg-surface-bright text-on-surface focus:outline-none focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 text-sm" 
-                  value={genForm.tahunAkademik} 
-                  onChange={e => setGenForm({...genForm, tahunAkademik: e.target.value})} 
-                  required 
-                />
+            <div className="flex flex-col gap-4">
+              <div className="flex justify-between items-center px-1">
+                <div className="flex items-center gap-2">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Terpilih</div>
+                  <span className="px-2 py-0.5 bg-error-container text-on-error-container rounded-md text-[10px] font-black">
+                    {selectedForDelete.length}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  {schedules.length > 0 && (
+                    <button 
+                      onClick={() => {
+                        if (selectedForDelete.length === schedules.length) setSelectedForDelete([]);
+                        else setSelectedForDelete(schedules.map(s => s.id));
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all border ${
+                        selectedForDelete.length === schedules.length
+                          ? 'bg-primary text-white border-primary shadow-sm'
+                          : 'bg-white text-primary border-primary/20 hover:bg-primary/5 hover:border-primary/40'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">
+                        {selectedForDelete.length === schedules.length ? 'deselect' : 'select_all'}
+                      </span>
+                      {selectedForDelete.length === schedules.length ? 'Batal Pilih' : 'Pilih Semua'}
+                    </button>
+                  )}
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant uppercase mb-2">Semester</label>
-                <select 
-                  className="w-full px-3 py-2 border border-outline-variant rounded-lg bg-surface-bright text-on-surface focus:outline-none focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 text-sm" 
-                  value={genForm.semesterTipe} 
-                  onChange={e => setGenForm({...genForm, semesterTipe: e.target.value})}
+
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowManage(false)}
+                  className="flex-1 py-3 px-4 border border-slate-200 text-slate-700 font-bold text-sm rounded-xl hover:bg-slate-50 transition-all"
                 >
-                  <option value="Ganjil">Ganjil</option>
-                  <option value="Genap">Genap</option>
-                </select>
+                  Batal
+                </button>
+                <button 
+                  onClick={() => {
+                    if (window.confirm(`Apakah Anda yakin ingin menghapus ${selectedForDelete.length} jadwal?`)) {
+                      bulkDeleteMut.mutate(selectedForDelete);
+                    }
+                  }}
+                  disabled={selectedForDelete.length === 0 || bulkDeleteMut.isPending}
+                  className="flex-[1.5] py-3 px-4 bg-error text-on-error font-bold text-sm rounded-xl hover:bg-error/90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-error/20"
+                >
+                  {bulkDeleteMut.isPending ? (
+                    <>
+                      <span className="material-symbols-outlined animate-spin text-[18px]">sync</span>
+                      Menghapus...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[18px]">delete_sweep</span>
+                      Hapus Terpilih
+                    </>
+                  )}
+                </button>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant uppercase mb-2">Jumlah Alternatif Jadwal (Max 1000)</label>
-                <input 
-                  type="number"
-                  min="1"
-                  max="1000"
-                  className="w-full px-3 py-2 border border-outline-variant rounded-lg bg-surface-bright text-on-surface focus:outline-none focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 text-sm" 
-                  value={genForm.jumlahJadwal} 
-                  onChange={e => setGenForm({...genForm, jumlahJadwal: parseInt(e.target.value) || 10})} 
-                  required 
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant uppercase mb-2">Batas Generasi (Max 2000)</label>
-                <input 
-                  type="number"
-                  min="1"
-                  max="2000"
-                  className="w-full px-3 py-2 border border-outline-variant rounded-lg bg-surface-bright text-on-surface focus:outline-none focus:border-secondary-container focus:ring-2 focus:ring-secondary-container/20 text-sm" 
-                  value={genForm.maxGenerasi} 
-                  onChange={e => setGenForm({...genForm, maxGenerasi: parseInt(e.target.value) || 500})} 
-                  required 
-                />
-              </div>
-              <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setShowGenerate(false)} className="px-4 py-2 border border-outline text-on-surface font-label-sm text-sm font-semibold rounded-lg hover:bg-surface-variant transition-colors flex-1">Batal</button>
-                <button type="submit" disabled={generateMut.isPending} className="px-4 py-2 bg-primary text-on-primary font-label-sm text-sm font-semibold rounded-lg hover:bg-primary-container transition-colors flex-1">{generateMut.isPending ? "Memulai..." : "Generate"}</button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
-      <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar { height: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #bbb; }
-        
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .spin { animation: spin 2s linear infinite; }
-      `}</style>
-    </div>
+    <style jsx global>{`
+      .custom-scrollbar::-webkit-scrollbar { height: 8px; }
+      .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #bbb; }
+      
+      @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      .spin { animation: spin 2s linear infinite; }
+    `}</style>
+    </>
   );
 }
 
