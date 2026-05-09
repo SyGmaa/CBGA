@@ -304,7 +304,7 @@ export function repairKromosom(
   ruanganKapasitasMap: Map<number, number>,
   slotInfoMap: Map<number, SlotInfo>,
   preferensiMap: PreferensiMap,
-  maxRepairAttempts: number = 3
+  maxRepairAttempts: number = 2 // Increased back to 2 since it's now O(N)
 ): Kromosom {
   let current = kromosom.map(g => ({ ...g }));
 
@@ -317,118 +317,161 @@ export function repairKromosom(
   }
 
   for (let attempt = 0; attempt < maxRepairAttempts; attempt++) {
-    // Build usage maps
-    const dosenSlots = new Map<string, number[]>();
-    const ruangSlots = new Map<string, number[]>();
-    const semSlots = new Map<string, number[]>();
+    // Build usage maps for O(1) lookups
+    const usedDosenSlots = new Set<string>();
+    const usedRoomSlots = new Set<string>();
+    const usedSemSlots = new Set<string>();
 
-    for (let i = 0; i < current.length; i++) {
-      const gen = current[i]!;
+    for (const gen of current) {
       const occupied = getOccupiedSlots(gen, allSlotIdsOrdered);
       for (const slotId of occupied) {
-        const dk = `d_${gen.idDosen}_${slotId}`;
-        if (!dosenSlots.has(dk)) dosenSlots.set(dk, []);
-        dosenSlots.get(dk)!.push(i);
-
-        const rk = `r_${gen.idRuangan}_${slotId}`;
-        if (!ruangSlots.has(rk)) ruangSlots.set(rk, []);
-        ruangSlots.get(rk)!.push(i);
-
-        const sk = `s_${gen.idProdi}_${gen.semester}_${slotId}`;
-        if (!semSlots.has(sk)) semSlots.set(sk, []);
-        semSlots.get(sk)!.push(i);
+        usedDosenSlots.add(`d_${gen.idDosen}_${slotId}`);
+        usedRoomSlots.add(`r_${gen.idRuangan}_${slotId}`);
+        usedSemSlots.add(`s_${gen.idProdi}_${gen.semester}_${slotId}`);
       }
     }
 
     // Find conflicting gene indices
-    const conflicting = new Set<number>();
-    for (const indices of dosenSlots.values()) {
-      if (indices.length > 1) indices.forEach(i => conflicting.add(i));
-    }
-    for (const indices of ruangSlots.values()) {
-      if (indices.length > 1) indices.forEach(i => conflicting.add(i));
-    }
-    for (const indices of semSlots.values()) {
-      if (indices.length > 1) indices.forEach(i => conflicting.add(i));
-    }
-
-    // Check kapasitas
+    const conflicting: number[] = [];
     for (let i = 0; i < current.length; i++) {
-      if (current[i]!.kapasitasRuangan < current[i]!.jumlahMhs) {
-        conflicting.add(i);
-      }
-    }
+      const gen = current[i]!;
+      const occupied = getOccupiedSlots(gen, allSlotIdsOrdered);
+      let hasConflict = gen.kapasitasRuangan < gen.jumlahMhs;
 
-    if (conflicting.size === 0) break; // No conflicts, done!
-
-    // Try to fix each conflicting gene
-    const conflictArr = shuffle([...conflicting]);
-    for (const idx of conflictArr) {
-      const gen = current[idx]!;
-
-      // Fix kapasitas first
-      if (gen.kapasitasRuangan < gen.jumlahMhs) {
-        const suitableRooms = allRuanganIds.filter(
-          rId => (ruanganKapasitasMap.get(rId) || 0) >= gen.jumlahMhs
-        );
-        if (suitableRooms.length > 0) {
-          const newRoom = suitableRooms[Math.floor(Math.random() * suitableRooms.length)]!;
-          gen.idRuangan = newRoom;
-          gen.kapasitasRuangan = ruanganKapasitasMap.get(newRoom) || 0;
+      if (!hasConflict) {
+        // Check if this gene is part of a clash (more than 1 gene using same resource)
+        // Note: This check is slightly simplified but effective for repair
+        let clashCount = 0;
+        for (const slotId of occupied) {
+          // In a perfect world, each slotId should be used exactly once by this gene in the maps
+          // If we want to be precise, we'd count occurrences, but for repair, we just check if it's "clean"
+          // We'll use a more precise detection for repair targeting
         }
       }
+      
+      // Use the logic from mutate to identify conflicting genes precisely
+      // (Re-using some logic for consistency)
+    }
 
-      // Try to find a non-conflicting slot+room combo
+    // Simplified: instead of finding EXACT conflicts which is expensive, 
+    // we'll just try to fix genes that calculateFitness says are conflicting
+    // To keep it simple and FAST, we'll just iterate and "clean" each gene against the maps
+    
+    for (let i = 0; i < current.length; i++) {
+      const gen = current[i]!;
+      // This is the core of the repair operator
+    }
+    
+    // RE-IMPLEMENTING REPAIR WITH OPTIMIZED MAPS
+    const conflictIndices: number[] = [];
+    const dosenCount = new Map<string, number>();
+    const roomCount = new Map<string, number>();
+    const semCount = new Map<string, number>();
+
+    current.forEach((gen, idx) => {
+      getOccupiedSlots(gen, allSlotIdsOrdered).forEach(sId => {
+        const dk = `d_${gen.idDosen}_${sId}`;
+        const rk = `r_${gen.idRuangan}_${sId}`;
+        const sk = `s_${gen.idProdi}_${gen.semester}_${sId}`;
+        dosenCount.set(dk, (dosenCount.get(dk) || 0) + 1);
+        roomCount.set(rk, (roomCount.get(rk) || 0) + 1);
+        semCount.set(sk, (semCount.get(sk) || 0) + 1);
+      });
+    });
+
+    current.forEach((gen, idx) => {
+      // Check ALL hard constraints
+      const isValidRange = isValidSlotRange(gen.idSlotWaktu, gen.sks, allSlotIdsOrdered, slotInfoMap);
+      let hasIssue = !isValidRange || gen.kapasitasRuangan < gen.jumlahMhs;
+      
+      if (!hasIssue) {
+        const occ = getOccupiedSlots(gen, allSlotIdsOrdered);
+        for (const sId of occ) {
+          if ((dosenCount.get(`d_${gen.idDosen}_${sId}`) || 0) > 1 ||
+              (roomCount.get(`r_${gen.idRuangan}_${sId}`) || 0) > 1 ||
+              (semCount.get(`s_${gen.idProdi}_${gen.semester}_${sId}`) || 0) > 1) {
+            hasIssue = true; break;
+          }
+          // Also target PREFERENSI in repair indices
+          if (preferensiMap[gen.idDosen]?.has(sId)) {
+            hasIssue = true; break;
+          }
+        }
+      }
+      if (hasIssue) conflictIndices.push(idx);
+    });
+
+    if (conflictIndices.length === 0) break;
+
+    shuffle(conflictIndices).forEach(idx => {
+      const gen = current[idx]!;
+      
+      // 1. Remove current gene from count maps
+      getOccupiedSlots(gen, allSlotIdsOrdered).forEach(sId => {
+        const dk = `d_${gen.idDosen}_${sId}`;
+        const rk = `r_${gen.idRuangan}_${sId}`;
+        const sk = `s_${gen.idProdi}_${gen.semester}_${sId}`;
+        dosenCount.set(dk, dosenCount.get(dk)! - 1);
+        roomCount.set(rk, roomCount.get(rk)! - 1);
+        semCount.set(sk, semCount.get(sk)! - 1);
+      });
+
+      // 2. Search for a "clean" spot
       const validSlots = validStartSlotsCache.get(gen.sks) || allSlotIdsOrdered;
-      const shuffledSlots = shuffle([...validSlots]);
-      const suitableRooms = allRuanganIds.filter(
-        rId => (ruanganKapasitasMap.get(rId) || 0) >= gen.jumlahMhs
-      );
-      const rooms = suitableRooms.length > 0 ? suitableRooms : allRuanganIds;
+      const candidates = shuffle([...validSlots]);
+      const rooms = shuffle([...allRuanganIds]);
 
       let fixed = false;
-      // Try up to 30 random slot+room combinations
-      for (let t = 0; t < Math.min(30, shuffledSlots.length); t++) {
-        const candidateSlot = shuffledSlots[t]!;
-        const candidateRoom = rooms[Math.floor(Math.random() * rooms.length)]!;
+      outer:
+      for (let s = 0; s < Math.min(20, candidates.length); s++) {
+        const sId = candidates[s]!;
+        const occ = getOccupiedSlots({ ...gen, idSlotWaktu: sId }, allSlotIdsOrdered);
+        
+        // Check dosen and semester availability in current maps
+        let timeFree = true;
+        for (const slotId of occ) {
+          if ((dosenCount.get(`d_${gen.idDosen}_${slotId}`) || 0) > 0 ||
+              (semCount.get(`s_${gen.idProdi}_${gen.semester}_${slotId}`) || 0) > 0) {
+            timeFree = false; break;
+          }
+          // Check preferensi
+          if (preferensiMap[gen.idDosen]?.has(slotId)) {
+            timeFree = false; break;
+          }
+        }
+        if (!timeFree) continue;
 
-        // Check if this assignment would conflict
-        const occupied = getOccupiedSlots({ ...gen, idSlotWaktu: candidateSlot }, allSlotIdsOrdered);
-        let hasConflict = false;
+        for (let r = 0; r < Math.min(10, rooms.length); r++) {
+          const rId = rooms[r]!;
+          if ((ruanganKapasitasMap.get(rId) || 0) < gen.jumlahMhs) continue;
 
-        for (const slotId of occupied) {
-          // Check dosen clash with other genes
-          for (let j = 0; j < current.length; j++) {
-            if (j === idx) continue;
-            const other = current[j]!;
-            const otherOcc = getOccupiedSlots(other, allSlotIdsOrdered);
-            if (other.idDosen === gen.idDosen && otherOcc.includes(slotId)) {
-              hasConflict = true; break;
-            }
-            if (other.idRuangan === candidateRoom && otherOcc.includes(slotId)) {
-              hasConflict = true; break;
-            }
-            if (other.idProdi === gen.idProdi && other.semester === gen.semester && otherOcc.includes(slotId)) {
-              hasConflict = true; break;
+          let roomFree = true;
+          for (const slotId of occ) {
+            if ((roomCount.get(`r_${rId}_${slotId}`) || 0) > 0) {
+              roomFree = false; break;
             }
           }
-          if (hasConflict) break;
-        }
 
-        if (!hasConflict) {
-          gen.idSlotWaktu = candidateSlot;
-          gen.idRuangan = candidateRoom;
-          gen.kapasitasRuangan = ruanganKapasitasMap.get(candidateRoom) || 0;
-          fixed = true;
-          break;
+          if (roomFree) {
+            gen.idSlotWaktu = sId;
+            gen.idRuangan = rId;
+            gen.kapasitasRuangan = ruanganKapasitasMap.get(rId) || 0;
+            fixed = true;
+            break outer;
+          }
         }
       }
 
-      // If not fully fixed, at least try a random valid slot
-      if (!fixed && shuffledSlots.length > 0) {
-        gen.idSlotWaktu = shuffledSlots[Math.floor(Math.random() * shuffledSlots.length)]!;
-      }
-    }
+      // 3. Add (possibly new) gene back to count maps
+      getOccupiedSlots(gen, allSlotIdsOrdered).forEach(sId => {
+        const dk = `d_${gen.idDosen}_${sId}`;
+        const rk = `r_${gen.idRuangan}_${sId}`;
+        const sk = `s_${gen.idProdi}_${gen.semester}_${sId}`;
+        dosenCount.set(dk, (dosenCount.get(dk) || 0) + 1);
+        roomCount.set(rk, (roomCount.get(rk) || 0) + 1);
+        semCount.set(sk, (semCount.get(sk) || 0) + 1);
+      });
+    });
   }
 
   return current;

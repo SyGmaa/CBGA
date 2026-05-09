@@ -79,9 +79,9 @@ allSlotWaktu.forEach((s, index) => {
 // ============================================================
 let currentMutationRate = config.mutationRate;
 const MIN_MUTATION_RATE = config.mutationRate;
-const MAX_MUTATION_RATE = 0.25;
-const STAGNATION_THRESHOLD = 50; // generations without improvement
-const IMMIGRATION_RATIO = 0.2; // replace 20% of worst on stagnation
+const MAX_MUTATION_RATE = 0.4;
+const STAGNATION_THRESHOLD = 30; // generations without improvement
+const IMMIGRATION_RATIO = 0.4; // replace 40% of worst on stagnation
 
 let stagnationCounter = 0;
 let lastBestFitness = 0;
@@ -223,8 +223,8 @@ for (let gen = 0; gen < config.maxGenerations; gen++) {
     }
   }
 
-  // Report progress every 10 generations
-  if (gen % 10 === 0 || gen === config.maxGenerations - 1) {
+  // Report progress every generation for better UI feedback
+  if (true) {
     parentPort?.postMessage({
       type: "progress",
       data: {
