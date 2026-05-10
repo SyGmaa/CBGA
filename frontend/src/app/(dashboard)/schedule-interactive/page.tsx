@@ -34,6 +34,7 @@ export default function InteractiveSchedulePage() {
   const [filterConflict, setFilterConflict] = useState(false);
   const [filterProdi, setFilterProdi] = useState("Semua");
   const [filterDosen, setFilterDosen] = useState("Semua");
+  const [filterRoom, setFilterRoom] = useState("Semua");
   const [selectedCourse, setSelectedCourse] = useState<(JadwalDetail & { sksTotal?: number; slotIds?: number[]; detailIds?: number[] }) | null>(null);
   const [lastMove, setLastMove] = useState<{
     detailId: number;
@@ -378,6 +379,18 @@ export default function InteractiveSchedulePage() {
     return conflictMap.size;
   }, [conflictMap]);
 
+  const prodiOptions = useMemo(() => {
+    return ["Semua", ...Array.from(new Set(sessions.map(s => s.mataKuliah?.prodi?.namaProdi).filter(Boolean))).sort()];
+  }, [sessions]);
+
+  const dosenOptions = useMemo(() => {
+    return ["Semua", ...Array.from(new Set(sessions.map(s => s.dosen?.namaDosen).filter(Boolean))).sort()];
+  }, [sessions]);
+
+  const roomOptions = useMemo(() => {
+    return ["Semua", ...Array.from(new Set(rooms.map(r => r.namaRuangan).filter(Boolean))).sort()];
+  }, [rooms]);
+
   // 3. Organized data for UI: Day -> Room -> Sessions
   const organizedData = useMemo(() => {
     const data: Record<string, Record<number, any[]>> = {};
@@ -391,6 +404,7 @@ export default function InteractiveSchedulePage() {
       }
       if (filterProdi !== "Semua" && s.mataKuliah?.prodi?.namaProdi !== filterProdi) return false;
       if (filterDosen !== "Semua" && s.dosen?.namaDosen !== filterDosen) return false;
+      if (filterRoom !== "Semua" && (s.ruangan?.namaRuangan || `Ruangan ${s.idRuangan}`) !== filterRoom) return false;
       return true;
     });
 
@@ -433,7 +447,7 @@ export default function InteractiveSchedulePage() {
       });
     });
     return data;
-  }, [sessions, searchQuery, filterConflict, filterProdi, filterDosen, conflictMap]);
+  }, [sessions, searchQuery, filterConflict, filterProdi, filterDosen, filterRoom, conflictMap, rooms]);
 
   const getSlotIndex = (jamMulai: string) => {
     return timeLabels.findIndex(t => t.start === jamMulai);
@@ -849,6 +863,39 @@ export default function InteractiveSchedulePage() {
             >
               ⚠ Hanya Konflik
             </button>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Ruangan:</span>
+              <select 
+                value={filterRoom}
+                onChange={(e) => setFilterRoom(e.target.value)}
+                className="px-2 py-1.5 border border-outline-variant rounded-lg text-xs bg-surface-container-lowest focus:ring-1 outline-none min-w-[120px]"
+              >
+                {roomOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Prodi:</span>
+              <select 
+                value={filterProdi}
+                onChange={(e) => setFilterProdi(e.target.value)}
+                className="px-2 py-1.5 border border-outline-variant rounded-lg text-xs bg-surface-container-lowest focus:ring-1 outline-none min-w-[120px]"
+              >
+                {prodiOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Dosen:</span>
+              <select 
+                value={filterDosen}
+                onChange={(e) => setFilterDosen(e.target.value)}
+                className="px-2 py-1.5 border border-outline-variant rounded-lg text-xs bg-surface-container-lowest focus:ring-1 outline-none min-w-[120px]"
+              >
+                {dosenOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
             
             <div className="relative flex items-center gap-2 text-xs">
               <span className="font-semibold text-on-surface-variant">Zoom:</span>
@@ -931,9 +978,13 @@ export default function InteractiveSchedulePage() {
               {HARI.map((hari) => {
                 const dayRoomsData = organizedData[hari] || {};
                 const activeRoomIds = Object.keys(dayRoomsData).map(Number);
-                const displayRoomIds = showAllRooms 
+                const baseRoomIds = showAllRooms 
                   ? rooms.map(r => r.id) 
                   : (activeRoomIds.length > 0 ? activeRoomIds : rooms.slice(0, 3).map(r => r.id));
+                
+                const displayRoomIds = filterRoom !== "Semua" 
+                  ? rooms.filter(r => r.namaRuangan === filterRoom).map(r => r.id)
+                  : baseRoomIds;
 
                 return (
                   <div key={hari} className="flex border-b border-outline-variant last:border-0">
