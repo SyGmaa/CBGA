@@ -584,6 +584,8 @@ export default function InteractiveSchedulePage() {
   const handleFitScreen = useCallback(() => {
     if (containerRef.current && timeLabels.length > 0) {
       const containerWidth = containerRef.current.clientWidth;
+      if (containerWidth < 100) return; // Don't calculate if container is too small or hidden
+      
       const dayLabelWidth = 160;
       const availableWidth = containerWidth - dayLabelWidth - 24; // Precision buffer
       const targetZoom = availableWidth / (timeLabels.length * SLOT_WIDTH);
@@ -609,6 +611,13 @@ export default function InteractiveSchedulePage() {
     if (selectedId && result && timeLabels.length > 0) {
       setIsAutoFit(true);
       handleFitScreen();
+      
+      // Ensure we catch the final width after any layout shifts or sidebar transitions
+      const timers = [
+        setTimeout(handleFitScreen, 100),
+        setTimeout(handleFitScreen, 400) // Slightly after the 300ms sidebar transition
+      ];
+      return () => timers.forEach(clearTimeout);
     }
   }, [selectedId, !!result, timeLabels.length, handleFitScreen]);
 
@@ -1001,7 +1010,7 @@ export default function InteractiveSchedulePage() {
         ) : (
         <div ref={containerRef} className="overflow-auto custom-scrollbar flex-1 w-full" style={{ WebkitOverflowScrolling: 'touch' }}>
           {/* Ensure this div is wide enough to force horizontal scroll */}
-          <div className="inline-block min-w-full transition-all duration-300" style={{ width: (timeLabels.length * (SLOT_WIDTH * zoomLevel)) + 160 }}>
+          <div className="inline-block min-w-full" style={{ width: (timeLabels.length * (SLOT_WIDTH * zoomLevel)) + 160 }}>
             
             {/* Header: Time Slots */}
             <div className="flex flex-col sticky top-0 bg-surface-container-low z-30 shadow-sm">
