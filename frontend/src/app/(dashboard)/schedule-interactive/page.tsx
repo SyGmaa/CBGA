@@ -832,60 +832,67 @@ export default function InteractiveSchedulePage() {
         </div>
 
         <div className="flex flex-col gap-4 p-4 bg-white border border-outline-variant rounded-xl shadow-sm">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2 text-on-surface-variant mr-2">
-              <span className="material-symbols-outlined text-[20px]">filter_list</span>
-              <span className="text-xs font-bold uppercase tracking-wider">Kontrol:</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="relative min-w-[280px]">
-                <select 
-                  value={selectedId || ""}
-                  onChange={(e) => setSelectedId(Number(e.target.value))}
-                  className="w-full appearance-none bg-surface-container-lowest border border-outline-variant rounded-lg pl-3 pr-10 py-2.5 text-on-surface font-body-base text-sm shadow-inner focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all"
-                >
-                  <option value="" disabled>Pilih Jadwal Master...</option>
-                  {schedules.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.tahunAkademik} {s.semesterTipe} - {s.status}{s.id === selectedId && liveConflictCount > 0 ? ` ⚠ ${liveConflictCount} konflik terdeteksi` : s.conflictCount ? ` (Konflik: ${s.conflictCount})` : ''}
-                    </option>
-                  ))}
-                </select>
-                <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-4 min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-on-surface-variant shrink-0">
+                <span className="material-symbols-outlined text-[20px]">filter_list</span>
+                <span className="text-xs font-bold uppercase tracking-wider">Kontrol:</span>
               </div>
+
+              <div className="flex items-center gap-2 min-w-0 max-w-full sm:max-w-md flex-1">
+                <div className="relative flex-1 min-w-[220px]">
+                  <select 
+                    value={selectedId || ""}
+                    onChange={(e) => setSelectedId(Number(e.target.value))}
+                    className="w-full appearance-none bg-surface-container-lowest border border-outline-variant rounded-lg pl-3 pr-10 py-2.5 text-on-surface font-body-base text-sm shadow-inner focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all"
+                  >
+                    <option value="" disabled>Pilih Jadwal Master...</option>
+                    {schedules.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.tahunAkademik} {s.semesterTipe} - {s.status}{s.id === selectedId && liveConflictCount > 0 ? ` ⚠ ${liveConflictCount} konflik terdeteksi` : s.conflictCount ? ` (Konflik: ${s.conflictCount})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+                </div>
+                <button 
+                  onClick={() => setShowManage(true)}
+                  className="p-2.5 border border-outline-variant rounded-lg text-error hover:bg-error-container/20 transition-all shadow-sm flex items-center justify-center group shrink-0"
+                  title="Kelola Jadwal (Hapus)"
+                >
+                  <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">delete</span>
+                </button>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer bg-surface-container-lowest border border-outline-variant px-3 py-2.5 rounded-lg shadow-sm hover:bg-surface-variant/20 transition-all shrink-0">
+                <input 
+                  type="checkbox" 
+                  checked={showAllRooms} 
+                  onChange={e => setShowAllRooms(e.target.checked)} 
+                  className="rounded text-primary focus:ring-primary/20 w-4 h-4 cursor-pointer" 
+                />
+                Tampilkan Semua Ruangan
+              </label>
+            </div>
+            
+            <div className="flex items-center gap-3 shrink-0">
               <button 
-                onClick={() => setShowManage(true)}
-                className="p-2.5 border border-outline-variant rounded-lg text-error hover:bg-error-container/20 transition-all shadow-sm flex items-center justify-center group"
-                title="Kelola Jadwal (Hapus)"
+                onClick={handleExportExcel} 
+                disabled={!result || isResultLoading}
+                className="flex-1 sm:flex-none px-6 py-2.5 bg-green-600 text-white font-bold text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md whitespace-nowrap"
               >
-                <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">delete</span>
+                <span className="material-symbols-outlined text-[18px]">download</span>
+                Export Excel
+              </button>
+
+              <button 
+                onClick={() => setShowGenerate(true)} 
+                className="flex-1 sm:flex-none px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-lg hover:bg-primary/90 active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md whitespace-nowrap"
+              >
+                <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+                Generate Jadwal
               </button>
             </div>
-
-            <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer bg-surface-container-lowest border border-outline-variant px-3 py-2.5 rounded-lg shadow-sm hover:bg-surface-variant/20 transition-all">
-              <input 
-                type="checkbox" 
-                checked={showAllRooms} 
-                onChange={e => setShowAllRooms(e.target.checked)} 
-                className="rounded text-primary focus:ring-primary/20 w-4 h-4 cursor-pointer" 
-              />
-              Tampilkan Semua Ruangan
-            </label>
-            
-            <button 
-              onClick={handleExportExcel} 
-              disabled={!result || isResultLoading}
-              className="px-6 py-2.5 bg-green-600 text-white font-bold text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md"
-            >
-              <span className="material-symbols-outlined text-[18px]">download</span>
-              Export Excel
-            </button>
-
-            <button onClick={() => setShowGenerate(true)} className="px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-lg hover:bg-primary/90 active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md">
-              <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
-              Generate Jadwal
-            </button>
           </div>
 
           {/* Filters & Zoom */}
