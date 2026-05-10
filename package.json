@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "concurrently -n \"BACK,FRONT\" -c \"green,magenta\" \"npm run dev:backend\" \"npm run dev --prefix frontend\"",
     "dev:backend": "nodemon --watch backend --ext ts,json --exec npx tsx backend/server.ts",
+    "build": "npm run build --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend",
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:reset": "npx prisma migrate reset",

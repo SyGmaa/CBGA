@@ -61,6 +61,8 @@ export interface MataKuliah {
   prodi?: Prodi;
 }
 
+export type Matkul = MataKuliah;
+
 export interface Dosen {
   id: number;
   nidn: string;
