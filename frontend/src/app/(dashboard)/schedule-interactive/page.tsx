@@ -44,6 +44,9 @@ export default function InteractiveSchedulePage() {
     label: string;
   } | null>(null);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isAutoFit, setIsAutoFit] = useState(true);
+
   const { data: schedules = [] } = useQuery<JadwalMaster[]>({ 
     queryKey: ["schedules"], 
     queryFn: () => api.getSchedules() as Promise<JadwalMaster[]> 
@@ -578,6 +581,37 @@ export default function InteractiveSchedulePage() {
     setLastMove(null);
   };
 
+  const handleFitScreen = useCallback(() => {
+    if (containerRef.current && timeLabels.length > 0) {
+      const containerWidth = containerRef.current.clientWidth;
+      const dayLabelWidth = 160;
+      const availableWidth = containerWidth - dayLabelWidth - 24; // Precision buffer
+      const targetZoom = availableWidth / (timeLabels.length * SLOT_WIDTH);
+      setZoomLevel(Math.max(0.4, Math.min(1.2, targetZoom)));
+    }
+  }, [timeLabels.length]);
+
+  // Handle Resize and Sidebar shifts automatically
+  useEffect(() => {
+    if (!containerRef.current || !isAutoFit) return;
+    
+    const observer = new ResizeObserver(() => {
+      // Use requestAnimationFrame to ensure layout has settled
+      requestAnimationFrame(handleFitScreen);
+    });
+    
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [handleFitScreen, isAutoFit]);
+
+  // Auto-fit screen when schedule is loaded
+  useEffect(() => {
+    if (selectedId && result && timeLabels.length > 0) {
+      setIsAutoFit(true);
+      handleFitScreen();
+    }
+  }, [selectedId, !!result, timeLabels.length, handleFitScreen]);
+
   const handleExportExcel = async () => {
     if (!result || !result.jadwalDetail || sessions.length === 0) {
       alert("Tidak ada data jadwal untuk diekspor.");
@@ -899,10 +933,28 @@ export default function InteractiveSchedulePage() {
             
             <div className="relative flex items-center gap-2 text-xs">
               <span className="font-semibold text-on-surface-variant">Zoom:</span>
-              <button onClick={() => setZoomLevel(z => Math.max(0.6, z - 0.1))} className="p-1 rounded hover:bg-surface-variant"><span className="material-symbols-outlined text-sm">zoom_out</span></button>
-              <span className="w-8 text-center font-mono">{Math.round(zoomLevel * 100)}%</span>
-              <button onClick={() => setZoomLevel(z => Math.min(1.5, z + 0.1))} className="p-1 rounded hover:bg-surface-variant"><span className="material-symbols-outlined text-sm">zoom_in</span></button>
-              <button onClick={() => setZoomLevel(1)} className="p-1 rounded hover:bg-surface-variant"><span className="material-symbols-outlined text-sm">fit_screen</span></button>
+              <button 
+                onClick={() => { setIsAutoFit(false); setZoomLevel(z => Math.max(0.4, z - 0.1)); }} 
+                className="p-1 rounded hover:bg-surface-variant"
+              >
+                <span className="material-symbols-outlined text-sm">zoom_out</span>
+              </button>
+              <span className={`w-10 text-center font-mono ${isAutoFit ? 'text-primary font-bold' : ''}`}>
+                {isAutoFit ? 'FIT' : `${Math.round(zoomLevel * 100)}%`}
+              </span>
+              <button 
+                onClick={() => { setIsAutoFit(false); setZoomLevel(z => Math.min(1.5, z + 0.1)); }} 
+                className="p-1 rounded hover:bg-surface-variant"
+              >
+                <span className="material-symbols-outlined text-sm">zoom_in</span>
+              </button>
+              <button 
+                onClick={() => { setIsAutoFit(true); handleFitScreen(); }} 
+                className={`p-1 rounded transition-colors ${isAutoFit ? 'bg-primary text-on-primary' : 'hover:bg-surface-variant text-on-surface-variant'}`}
+                title="Toggle Auto-Fit to Width"
+              >
+                <span className="material-symbols-outlined text-sm">fit_screen</span>
+              </button>
             </div>
             
             <div className="flex-1"></div>
@@ -947,7 +999,7 @@ export default function InteractiveSchedulePage() {
             ))}
           </div>
         ) : (
-        <div className="overflow-auto custom-scrollbar flex-1 w-full" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div ref={containerRef} className="overflow-auto custom-scrollbar flex-1 w-full" style={{ WebkitOverflowScrolling: 'touch' }}>
           {/* Ensure this div is wide enough to force horizontal scroll */}
           <div className="inline-block min-w-full transition-all duration-300" style={{ width: (timeLabels.length * (SLOT_WIDTH * zoomLevel)) + 160 }}>
             
