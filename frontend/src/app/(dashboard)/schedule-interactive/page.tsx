@@ -1163,7 +1163,7 @@ export default function InteractiveSchedulePage() {
         
         {/* Modal Container */}
         <div 
-          className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden transform transition-all animate-slide-up border border-slate-200"
+          className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col transform transition-all animate-slide-up border border-slate-200"
           onClick={e => e.stopPropagation()}
         >
           {/* Header Section (Color coded based on conflict/prodi) */}
@@ -1200,8 +1200,8 @@ export default function InteractiveSchedulePage() {
             </div>
           </div>
 
-          {/* Content Section */}
-          <div className="p-6">
+          {/* Content Section - Scrollable */}
+          <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               
               {/* Information Cards */}
@@ -1344,7 +1344,7 @@ export default function InteractiveSchedulePage() {
     {/* GA Progress Modal */}
     {(isGenerating || gaProgress) && (
       <div className="fixed inset-0 z-[1000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-surface-container-lowest rounded-xl shadow-2xl border border-outline-variant w-full max-w-md p-6 flex flex-col items-center text-center">
+        <div className="bg-surface-container-lowest rounded-xl shadow-2xl border border-outline-variant w-full max-w-md max-h-[90vh] overflow-y-auto custom-scrollbar p-6 flex flex-col items-center text-center">
           <div className="w-16 h-16 rounded-full bg-primary-container/10 flex items-center justify-center mb-4 text-primary">
             <span className="material-symbols-outlined text-[32px] spin">settings</span>
           </div>
@@ -1409,7 +1409,7 @@ export default function InteractiveSchedulePage() {
     {/* Generate Schedule Modal */}
     {showGenerate && !gaProgress && (
       <div className="fixed inset-0 z-[1000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowGenerate(false)}>
-        <div className="bg-surface-container-lowest rounded-xl shadow-lg border border-outline-variant w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+        <div className="bg-surface-container-lowest rounded-xl shadow-lg border border-outline-variant w-full max-w-sm max-h-[90vh] overflow-y-auto custom-scrollbar p-6" onClick={e => e.stopPropagation()}>
           <h2 className="font-headline-md text-lg text-on-surface mb-4">Pengaturan Generasi</h2>
           <form onSubmit={e => { e.preventDefault(); generateMut.mutate(genForm); }} className="space-y-4">
             <div>
@@ -1468,7 +1468,7 @@ export default function InteractiveSchedulePage() {
     {/* Manage/Delete Schedules Modal */}
     {showManage && (
       <div className="fixed inset-0 z-[1000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowManage(false)}>
-        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
           <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <span className="material-symbols-outlined text-error">manage_accounts</span>
