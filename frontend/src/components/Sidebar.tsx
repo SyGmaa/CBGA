@@ -62,9 +62,9 @@ export default function Sidebar() {
                 {sidebarOpen ? (
                   <span className="overflow-hidden whitespace-nowrap">{item.label}</span>
                 ) : (
-                  <div className="fixed left-20 ml-2 px-3 py-1.5 bg-slate-800 text-white text-xs rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible pointer-events-none transition-all duration-200 whitespace-nowrap z-[100] shadow-2xl border border-white/10 translate-x-[-10px] group-hover:translate-x-0">
+                  <div className="fixed left-20 ml-2 px-4 py-2 bg-slate-800 text-white text-sm rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible pointer-events-none transition-all duration-200 whitespace-nowrap z-[100] shadow-2xl border border-white/10 translate-x-[-10px] group-hover:translate-x-0">
                     {item.label}
-                    <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-slate-800 rotate-45 border-l border-b border-white/10"></div>
+                    <div className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3 h-3 bg-slate-800 rotate-45 border-l border-b border-white/10"></div>
                   </div>
                 )}
               </Link>
@@ -81,9 +81,9 @@ export default function Sidebar() {
             {sidebarOpen ? (
               <span className="ml-2 overflow-hidden whitespace-nowrap">Generate Report</span>
             ) : (
-              <div className="fixed left-20 ml-2 px-3 py-1.5 bg-slate-800 text-white text-xs rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible pointer-events-none transition-all duration-200 whitespace-nowrap z-[100] shadow-2xl border border-white/10 translate-x-[-10px] group-hover:translate-x-0 font-normal">
+              <div className="fixed left-20 ml-2 px-4 py-2 bg-slate-800 text-white text-sm rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible pointer-events-none transition-all duration-200 whitespace-nowrap z-[100] shadow-2xl border border-white/10 translate-x-[-10px] group-hover:translate-x-0 font-normal">
                 Generate Report
-                <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-slate-800 rotate-45 border-l border-b border-white/10"></div>
+                <div className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3 h-3 bg-slate-800 rotate-45 border-l border-b border-white/10"></div>
               </div>
             )}
           </button>
@@ -111,9 +111,9 @@ export default function Sidebar() {
               {sidebarOpen ? (
                 <span className="font-medium overflow-hidden whitespace-nowrap">Logout</span>
               ) : (
-                <div className="fixed left-20 ml-2 px-3 py-1.5 bg-slate-800 text-white text-xs rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible pointer-events-none transition-all duration-200 whitespace-nowrap z-[100] shadow-2xl border border-white/10 translate-x-[-10px] group-hover:translate-x-0 font-normal text-error">
+                <div className="fixed left-20 ml-2 px-4 py-2 bg-slate-800 text-white text-sm rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible pointer-events-none transition-all duration-200 whitespace-nowrap z-[100] shadow-2xl border border-white/10 translate-x-[-10px] group-hover:translate-x-0 font-normal text-error">
                   Logout
-                  <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-slate-800 rotate-45 border-l border-b border-white/10"></div>
+                  <div className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3 h-3 bg-slate-800 rotate-45 border-l border-b border-white/10"></div>
                 </div>
               )}
             </button>
