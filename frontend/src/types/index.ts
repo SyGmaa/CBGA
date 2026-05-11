@@ -57,6 +57,7 @@ export interface MataKuliah {
   sks: number;
   semester: number;
   jumlahMhs: number;
+  isAktif: boolean;
   idProdi: number;
   prodi?: Prodi;
 }

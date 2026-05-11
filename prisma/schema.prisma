@@ -132,6 +132,7 @@ model MataKuliah {
   sks       Int
   semester  Int
   jumlahMhs Int    @map("jumlah_mhs")
+  isAktif   Boolean @default(true) @map("is_aktif")
 
   idProdi   Int    @map("id_prodi")
   prodi     Prodi  @relation(fields: [idProdi], references: [id])

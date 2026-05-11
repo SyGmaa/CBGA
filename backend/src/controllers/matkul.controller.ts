@@ -29,9 +29,17 @@ export async function getById(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
-    const { kodeMk, namaMk, sks, semester, jumlahMhs, idProdi } = req.body;
+    const { kodeMk, namaMk, sks, semester, jumlahMhs, idProdi, isAktif } = req.body;
     const data = await prisma.mataKuliah.create({
-      data: { kodeMk, namaMk, sks: Number(sks), semester: Number(semester), jumlahMhs: Number(jumlahMhs), idProdi: Number(idProdi) },
+      data: { 
+        kodeMk, 
+        namaMk, 
+        sks: Number(sks), 
+        semester: Number(semester), 
+        jumlahMhs: Number(jumlahMhs), 
+        idProdi: Number(idProdi),
+        isAktif: isAktif !== undefined ? Boolean(isAktif) : true
+      },
     });
     res.status(201).json(data);
   } catch (error: any) {
@@ -46,10 +54,18 @@ export async function create(req: Request, res: Response) {
 
 export async function update(req: Request, res: Response) {
   try {
-    const { kodeMk, namaMk, sks, semester, jumlahMhs, idProdi } = req.body;
+    const { kodeMk, namaMk, sks, semester, jumlahMhs, idProdi, isAktif } = req.body;
     const data = await prisma.mataKuliah.update({
       where: { id: Number(req.params.id) },
-      data: { kodeMk, namaMk, sks: Number(sks), semester: Number(semester), jumlahMhs: Number(jumlahMhs), idProdi: Number(idProdi) },
+      data: { 
+        kodeMk, 
+        namaMk, 
+        sks: Number(sks), 
+        semester: Number(semester), 
+        jumlahMhs: Number(jumlahMhs), 
+        idProdi: Number(idProdi),
+        isAktif: isAktif !== undefined ? Boolean(isAktif) : undefined
+      },
     });
     res.json(data);
   } catch (error) {

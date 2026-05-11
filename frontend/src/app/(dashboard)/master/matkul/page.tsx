@@ -15,11 +15,13 @@ export default function MatkulPage() {
     sks: 2, 
     idProdi: 0, 
     semester: 1, 
-    jumlahMhs: 40 
+    jumlahMhs: 40,
+    isAktif: true
   });
   
   const [searchQuery, setSearchQuery] = useState("");
   const [filterProdi, setFilterProdi] = useState<number | "all">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "aktif" | "nonaktif">("all");
 
   const { data: list = [], isLoading } = useQuery<Matkul[]>({
     queryKey: ["matkul"],
@@ -37,9 +39,12 @@ export default function MatkulPage() {
         it.namaMk.toLowerCase().includes(searchQuery.toLowerCase()) ||
         it.kodeMk.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesProdi = filterProdi === "all" || it.idProdi === filterProdi;
-      return matchesSearch && matchesProdi;
+      const matchesStatus = filterStatus === "all" || 
+        (filterStatus === "aktif" && it.isAktif) || 
+        (filterStatus === "nonaktif" && !it.isAktif);
+      return matchesSearch && matchesProdi && matchesStatus;
     });
-  }, [list, searchQuery, filterProdi]);
+  }, [list, searchQuery, filterProdi, filterStatus]);
 
   const createMutation = useMutation({
     mutationFn: (data: any) => api.createMatkul(data),
@@ -64,7 +69,8 @@ export default function MatkulPage() {
       sks: 2, 
       idProdi: prodiList[0]?.id || 0, 
       semester: 1, 
-      jumlahMhs: 40 
+      jumlahMhs: 40,
+      isAktif: true
     }); 
     setShowModal(true); 
   };
@@ -77,7 +83,8 @@ export default function MatkulPage() {
       sks: item.sks, 
       idProdi: item.idProdi, 
       semester: item.semester, 
-      jumlahMhs: item.jumlahMhs 
+      jumlahMhs: item.jumlahMhs,
+      isAktif: item.isAktif 
     }); 
     setShowModal(true); 
   };
@@ -123,6 +130,15 @@ export default function MatkulPage() {
         <div className="flex gap-2">
           <select 
             className="px-4 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none pr-10 relative"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value as any)}
+          >
+            <option value="all">Semua Status</option>
+            <option value="aktif">Aktif</option>
+            <option value="nonaktif">Tidak Aktif</option>
+          </select>
+          <select 
+            className="px-4 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none pr-10 relative"
             value={filterProdi}
             onChange={(e) => setFilterProdi(e.target.value === "all" ? "all" : +e.target.value)}
           >
@@ -138,9 +154,10 @@ export default function MatkulPage() {
             <tr className="bg-surface-container-low border-b border-outline-variant">
               <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider w-16">No</th>
               <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Mata Kuliah</th>
-              <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">SKS</th>
-              <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Semester</th>
+              <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">SKS</th>
+              <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Smstr</th>
               <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Prodi</th>
+              <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Status</th>
               <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-right">Aksi</th>
             </tr>
           </thead>
@@ -183,6 +200,23 @@ export default function MatkulPage() {
                   <td className="px-6 py-4 text-center text-sm font-medium">{item.semester}</td>
                   <td className="px-6 py-4">
                     <span className="text-xs text-on-surface-variant font-medium">{item.prodi?.namaProdi || "N/A"}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex justify-center">
+                      <button 
+                        onClick={() => updateMutation.mutate({ id: item.id, data: { ...item, isAktif: !item.isAktif } })}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold transition-all ${
+                          item.isAktif 
+                            ? "bg-success-container/10 text-success border border-success/20 hover:bg-success/10" 
+                            : "bg-error-container/10 text-error border border-error/20 hover:bg-error/10"
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[14px]">
+                          {item.isAktif ? "check_circle" : "cancel"}
+                        </span>
+                        {item.isAktif ? "AKTIF" : "NONAKTIF"}
+                      </button>
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-1 md:opacity-0 group-hover:opacity-100 transition-opacity">
@@ -308,6 +342,27 @@ export default function MatkulPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="pt-2">
+              <label className="flex items-center gap-3 p-4 bg-surface-container-low border border-outline-variant rounded-2xl cursor-pointer hover:bg-primary/5 transition-all group">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${form.isAktif ? 'bg-success/10 text-success' : 'bg-on-surface-variant/10 text-on-surface-variant'}`}>
+                  <span className="material-symbols-outlined text-[22px]">{form.isAktif ? "check_circle" : "cancel"}</span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-on-surface">Status Mata Kuliah Aktif</p>
+                  <p className="text-[11px] text-on-surface-variant">Aktifkan agar mata kuliah ini diikutkan dalam pembuatan jadwal otomatis.</p>
+                </div>
+                <div className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="sr-only peer" 
+                    checked={form.isAktif}
+                    onChange={(e) => setForm({ ...form, isAktif: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                </div>
+              </label>
             </div>
           </form>
         </div>

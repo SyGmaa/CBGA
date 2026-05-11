@@ -1438,6 +1438,9 @@ export default function InteractiveSchedulePage() {
                 <option value="Ganjil">Ganjil</option>
                 <option value="Genap">Genap</option>
               </select>
+              <p className="text-[10px] text-on-surface-variant mt-1.5 px-1 leading-relaxed">
+                <span className="font-bold">Info:</span> Hanya mata kuliah dengan semester {genForm.semesterTipe === "Ganjil" ? "1, 3, 5, 7" : "2, 4, 6, 8"} yang berstatus <span className="text-success font-bold">Aktif</span> yang akan digenerate.
+              </p>
             </div>
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant uppercase mb-2">Jumlah Alternatif Jadwal (Max 1000)</label>

@@ -39,7 +39,14 @@ export async function generateSchedule(req: Request, res: Response) {
 
     // Fetch all required data (Ordered slots are CRITICAL for consecutive session logic)
     const [mataKuliah, ruanganList, slotWaktuList, preferensiList] = await Promise.all([
-      prisma.mataKuliah.findMany(),
+      prisma.mataKuliah.findMany({
+        where: {
+          isAktif: true,
+          semester: {
+            in: semesterTipe === "Ganjil" ? [1, 3, 5, 7] : [2, 4, 6, 8]
+          }
+        }
+      }),
       prisma.ruangan.findMany(),
       prisma.slotWaktu.findMany({
         orderBy: [
