@@ -2,6 +2,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAppStore } from "@/store/useAppStore";
 import Modal from "@/components/Modal";
 import type { Dosen, Prodi } from "@/types";
 
@@ -11,8 +12,11 @@ export default function DosenPage() {
   const [editItem, setEditItem] = useState<Dosen | null>(null);
   const [form, setForm] = useState({ nidn: "", namaDosen: "", idProdi: 0 });
   
+  const { user } = useAppStore();
+  const isProdiRole = user?.role === "PRODI";
+
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterProdi, setFilterProdi] = useState<number | "all">("all");
+  const [filterProdi, setFilterProdi] = useState<number | "all">(isProdiRole ? user.idProdi! : "all");
 
   const { data: dosenList = [], isLoading } = useQuery<Dosen[]>({
     queryKey: ["dosen"],
@@ -51,7 +55,7 @@ export default function DosenPage() {
 
   const openCreate = () => { 
     setEditItem(null); 
-    setForm({ nidn: "", namaDosen: "", idProdi: prodiList[0]?.id || 0 }); 
+    setForm({ nidn: "", namaDosen: "", idProdi: isProdiRole ? user.idProdi! : (prodiList[0]?.id || 0) }); 
     setShowModal(true); 
   };
   
@@ -139,14 +143,16 @@ export default function DosenPage() {
           />
         </div>
         <div className="flex gap-2">
-          <select 
-            className="px-4 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none pr-10 relative"
-            value={filterProdi}
-            onChange={(e) => setFilterProdi(e.target.value === "all" ? "all" : +e.target.value)}
-          >
-            <option value="all">Semua Prodi</option>
-            {prodiList.map(p => <option key={p.id} value={p.id}>{p.namaProdi}</option>)}
-          </select>
+          {!isProdiRole && (
+            <select 
+              className="px-4 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none pr-10 relative"
+              value={filterProdi}
+              onChange={(e) => setFilterProdi(e.target.value === "all" ? "all" : +e.target.value)}
+            >
+              <option value="all">Semua Prodi</option>
+              {prodiList.map(p => <option key={p.id} value={p.id}>{p.namaProdi}</option>)}
+            </select>
+          )}
         </div>
       </div>
 
@@ -265,14 +271,15 @@ export default function DosenPage() {
               <div className="relative group">
                 <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px] group-focus-within:text-primary transition-colors">school</span>
                 <select 
-                  className="w-full pl-10 pr-10 py-2.5 bg-surface-container-low border border-outline-variant rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium appearance-none" 
+                  className={`w-full pl-10 pr-10 py-2.5 bg-surface-container-low border border-outline-variant rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium appearance-none ${isProdiRole ? 'opacity-70 cursor-not-allowed' : ''}`} 
                   value={form.idProdi} 
                   onChange={e => setForm({...form, idProdi: +e.target.value})}
+                  disabled={isProdiRole}
                 >
                   <option value={0}>Pilih Prodi (Opsional)</option>
                   {prodiList.map(p => <option key={p.id} value={p.id}>{p.namaProdi}</option>)}
                 </select>
-                <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant/60 pointer-events-none">expand_more</span>
+                {!isProdiRole && <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant/60 pointer-events-none">expand_more</span>}
               </div>
             </div>
           </form>

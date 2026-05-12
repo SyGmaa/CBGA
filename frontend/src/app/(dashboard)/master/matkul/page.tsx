@@ -2,6 +2,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAppStore } from "@/store/useAppStore";
 import Modal from "@/components/Modal";
 import type { Matkul, Prodi } from "@/types";
 
@@ -19,8 +20,11 @@ export default function MatkulPage() {
     isAktif: true
   });
   
+  const { user } = useAppStore();
+  const isProdiRole = user?.role === "PRODI";
+
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterProdi, setFilterProdi] = useState<number | "all">("all");
+  const [filterProdi, setFilterProdi] = useState<number | "all">(isProdiRole ? user.idProdi! : "all");
   const [filterStatus, setFilterStatus] = useState<"all" | "aktif" | "nonaktif">("all");
 
   const { data: list = [], isLoading } = useQuery<Matkul[]>({
@@ -67,7 +71,7 @@ export default function MatkulPage() {
       kodeMk: "", 
       namaMk: "", 
       sks: 2, 
-      idProdi: prodiList[0]?.id || 0, 
+      idProdi: isProdiRole ? user.idProdi! : (prodiList[0]?.id || 0), 
       semester: 1, 
       jumlahMhs: 40,
       isAktif: true
@@ -137,14 +141,16 @@ export default function MatkulPage() {
             <option value="aktif">Aktif</option>
             <option value="nonaktif">Tidak Aktif</option>
           </select>
-          <select 
-            className="px-4 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none pr-10 relative"
-            value={filterProdi}
-            onChange={(e) => setFilterProdi(e.target.value === "all" ? "all" : +e.target.value)}
-          >
-            <option value="all">Semua Prodi</option>
-            {prodiList.map(p => <option key={p.id} value={p.id}>{p.namaProdi}</option>)}
-          </select>
+          {!isProdiRole && (
+            <select 
+              className="px-4 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none pr-10 relative"
+              value={filterProdi}
+              onChange={(e) => setFilterProdi(e.target.value === "all" ? "all" : +e.target.value)}
+            >
+              <option value="all">Semua Prodi</option>
+              {prodiList.map(p => <option key={p.id} value={p.id}>{p.namaProdi}</option>)}
+            </select>
+          )}
         </div>
       </div>
 
@@ -301,17 +307,18 @@ export default function MatkulPage() {
               <div className="relative group">
                 <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/60 text-[18px] group-focus-within:text-primary transition-colors">school</span>
                 <select 
-                  className="w-full pl-10 pr-10 py-2.5 bg-surface-container-low border border-outline-variant rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium appearance-none" 
+                  className={`w-full pl-10 pr-10 py-2.5 bg-surface-container-low border border-outline-variant rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium appearance-none ${isProdiRole ? 'opacity-70 cursor-not-allowed' : ''}`} 
                   value={form.idProdi} 
                   onChange={e => setForm({...form, idProdi: +e.target.value})} 
                   required
+                  disabled={isProdiRole}
                 >
                   <option value={0} disabled>Pilih Program Studi</option>
                   {prodiList.map(p => (
                     <option key={p.id} value={p.id}>{p.namaProdi}</option>
                   ))}
                 </select>
-                <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant/60 pointer-events-none">expand_more</span>
+                {!isProdiRole && <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant/60 pointer-events-none">expand_more</span>}
               </div>
             </div>
 

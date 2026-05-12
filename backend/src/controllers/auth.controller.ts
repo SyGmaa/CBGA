@@ -29,7 +29,7 @@ export async function login(req: Request, res: Response) {
     }
 
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user.id, username: user.username, role: user.role, idProdi: user.idProdi },
       JWT_SECRET,
       { expiresIn: "24h" }
     );
@@ -41,6 +41,7 @@ export async function login(req: Request, res: Response) {
         username: user.username,
         email: user.email,
         role: user.role,
+        idProdi: user.idProdi,
       },
     });
   } catch (error) {
@@ -54,7 +55,7 @@ export async function getProfile(req: Request, res: Response) {
     const authReq = req as any;
     const user = await prisma.user.findUnique({
       where: { id: authReq.user.id },
-      select: { id: true, username: true, email: true, role: true },
+      select: { id: true, username: true, email: true, role: true, idProdi: true },
     });
     res.json(user);
   } catch (error) {

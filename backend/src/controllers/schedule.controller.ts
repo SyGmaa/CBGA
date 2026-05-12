@@ -37,11 +37,15 @@ export async function generateSchedule(req: Request, res: Response) {
     );
     const jadwalMasterId = masters[0].id;
 
+    const authReq = req as any;
+    const isProdiRole = authReq.user.role === "PRODI";
+
     // Fetch all required data (Ordered slots are CRITICAL for consecutive session logic)
     const [mataKuliah, ruanganList, slotWaktuList, preferensiList] = await Promise.all([
       prisma.mataKuliah.findMany({
         where: {
           isAktif: true,
+          idProdi: isProdiRole ? authReq.user.idProdi : undefined,
           semester: {
             in: semesterTipe === "Ganjil" ? [1, 3, 5, 7] : [2, 4, 6, 8]
           }
@@ -55,7 +59,10 @@ export async function generateSchedule(req: Request, res: Response) {
         ]
       }),
       prisma.preferensiWaktuDosen.findMany({
-        where: { status: "UNAVAILABLE" },
+        where: { 
+          status: "UNAVAILABLE",
+          dosen: isProdiRole ? { idProdi: authReq.user.idProdi } : undefined
+        },
       }),
     ]);
 
@@ -255,10 +262,14 @@ export async function generateSchedule(req: Request, res: Response) {
 
 export async function getResult(req: Request, res: Response) {
   try {
+    const authReq = req as any;
+    const isProdiRole = authReq.user.role === "PRODI";
+
     const jadwal = await prisma.jadwalMaster.findUnique({
       where: { id: Number(req.params.id) },
       include: {
         jadwalDetail: {
+          where: isProdiRole ? { mataKuliah: { idProdi: authReq.user.idProdi } } : undefined,
           include: {
             mataKuliah: {
               include: { prodi: { include: { fakultas: true } } }

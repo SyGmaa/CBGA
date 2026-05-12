@@ -80,7 +80,7 @@ export default function DashboardLayout({
             <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
               <div className="flex flex-col items-end hidden sm:flex">
                 <span className="text-xs font-bold text-on-surface">{user?.username || "Admin"}</span>
-                <span className="text-[10px] text-on-surface-variant uppercase tracking-widest font-bold">Administrator</span>
+                <span className="text-[10px] text-on-surface-variant uppercase tracking-widest font-bold">{user?.role || "Administrator"}</span>
               </div>
               <div className="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center overflow-hidden border border-outline-variant shadow-sm">
                 {user?.username ? (

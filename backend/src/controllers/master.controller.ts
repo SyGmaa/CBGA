@@ -15,7 +15,11 @@ export async function getFakultas(req: Request, res: Response) {
 
 export async function getProdi(req: Request, res: Response) {
   try {
+    const authReq = req as any;
+    const filter = authReq.user.role === "PRODI" ? { id: authReq.user.idProdi } : {};
+
     const data = await prisma.prodi.findMany({
+      where: filter,
       include: { fakultas: true },
       orderBy: { namaProdi: "asc" },
     });

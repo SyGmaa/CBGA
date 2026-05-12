@@ -3,7 +3,11 @@ import prisma from "../services/prisma.ts";
 
 export async function getAll(req: Request, res: Response) {
   try {
+    const authReq = req as any;
+    const filter = authReq.user.role === "PRODI" ? { idProdi: authReq.user.idProdi } : {};
+
     const data = await prisma.mataKuliah.findMany({
+      where: filter,
       include: { prodi: { include: { fakultas: true } } },
       orderBy: [{ semester: "asc" }, { kodeMk: "asc" }],
     });
@@ -29,7 +33,12 @@ export async function getById(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
+    const authReq = req as any;
     const { kodeMk, namaMk, sks, semester, jumlahMhs, idProdi, isAktif } = req.body;
+    
+    // Enforce idProdi for PRODI role
+    const finalIdProdi = authReq.user.role === "PRODI" ? authReq.user.idProdi : Number(idProdi);
+
     const data = await prisma.mataKuliah.create({
       data: { 
         kodeMk, 
@@ -37,7 +46,7 @@ export async function create(req: Request, res: Response) {
         sks: Number(sks), 
         semester: Number(semester), 
         jumlahMhs: Number(jumlahMhs), 
-        idProdi: Number(idProdi),
+        idProdi: finalIdProdi,
         isAktif: isAktif !== undefined ? Boolean(isAktif) : true
       },
     });
@@ -54,7 +63,23 @@ export async function create(req: Request, res: Response) {
 
 export async function update(req: Request, res: Response) {
   try {
+    const authReq = req as any;
     const { kodeMk, namaMk, sks, semester, jumlahMhs, idProdi, isAktif } = req.body;
+    
+    // Check ownership for PRODI role
+    if (authReq.user.role === "PRODI") {
+      const existing = await prisma.mataKuliah.findUnique({
+        where: { id: Number(req.params.id) },
+        select: { idProdi: true }
+      });
+      if (!existing || existing.idProdi !== authReq.user.idProdi) {
+        res.status(403).json({ error: "Anda tidak memiliki akses ke mata kuliah ini" });
+        return;
+      }
+    }
+
+    const finalIdProdi = authReq.user.role === "PRODI" ? authReq.user.idProdi : (idProdi ? Number(idProdi) : undefined);
+
     const data = await prisma.mataKuliah.update({
       where: { id: Number(req.params.id) },
       data: { 
@@ -63,7 +88,7 @@ export async function update(req: Request, res: Response) {
         sks: Number(sks), 
         semester: Number(semester), 
         jumlahMhs: Number(jumlahMhs), 
-        idProdi: Number(idProdi),
+        idProdi: finalIdProdi,
         isAktif: isAktif !== undefined ? Boolean(isAktif) : undefined
       },
     });
@@ -75,6 +100,20 @@ export async function update(req: Request, res: Response) {
 
 export async function remove(req: Request, res: Response) {
   try {
+    const authReq = req as any;
+
+    // Check ownership for PRODI role
+    if (authReq.user.role === "PRODI") {
+      const existing = await prisma.mataKuliah.findUnique({
+        where: { id: Number(req.params.id) },
+        select: { idProdi: true }
+      });
+      if (!existing || existing.idProdi !== authReq.user.idProdi) {
+        res.status(403).json({ error: "Anda tidak memiliki akses ke mata kuliah ini" });
+        return;
+      }
+    }
+
     await prisma.mataKuliah.delete({ where: { id: Number(req.params.id) } });
     res.json({ message: "Mata kuliah berhasil dihapus" });
   } catch (error: any) {

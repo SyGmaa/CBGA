@@ -3,7 +3,11 @@ import prisma from "../services/prisma.ts";
 
 export async function getAll(req: Request, res: Response) {
   try {
+    const authReq = req as any;
+    const filter = authReq.user.role === "PRODI" ? { idProdi: authReq.user.idProdi } : {};
+
     const data = await prisma.dosen.findMany({
+      where: filter,
       include: { prodi: true },
       orderBy: { namaDosen: "asc" },
     });
@@ -33,12 +37,17 @@ export async function getById(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
+    const authReq = req as any;
     const { nidn, namaDosen, idProdi } = req.body;
+
+    // Enforce idProdi for PRODI role
+    const finalIdProdi = authReq.user.role === "PRODI" ? authReq.user.idProdi : (idProdi ? Number(idProdi) : null);
+
     const data = await prisma.dosen.create({
       data: { 
         nidn, 
         namaDosen, 
-        idProdi: idProdi ? Number(idProdi) : null 
+        idProdi: finalIdProdi
       },
     });
     res.status(201).json(data);
@@ -54,13 +63,29 @@ export async function create(req: Request, res: Response) {
 
 export async function update(req: Request, res: Response) {
   try {
+    const authReq = req as any;
     const { nidn, namaDosen, idProdi } = req.body;
+
+    // Check ownership for PRODI role
+    if (authReq.user.role === "PRODI") {
+      const existing = await prisma.dosen.findUnique({
+        where: { id: Number(req.params.id) },
+        select: { idProdi: true }
+      });
+      if (!existing || existing.idProdi !== authReq.user.idProdi) {
+        res.status(403).json({ error: "Anda tidak memiliki akses ke data dosen ini" });
+        return;
+      }
+    }
+
+    const finalIdProdi = authReq.user.role === "PRODI" ? authReq.user.idProdi : (idProdi ? Number(idProdi) : null);
+
     const data = await prisma.dosen.update({
       where: { id: Number(req.params.id) },
       data: { 
         nidn, 
         namaDosen, 
-        idProdi: idProdi ? Number(idProdi) : null 
+        idProdi: finalIdProdi
       },
     });
     res.json(data);
@@ -72,6 +97,20 @@ export async function update(req: Request, res: Response) {
 
 export async function remove(req: Request, res: Response) {
   try {
+    const authReq = req as any;
+
+    // Check ownership for PRODI role
+    if (authReq.user.role === "PRODI") {
+      const existing = await prisma.dosen.findUnique({
+        where: { id: Number(req.params.id) },
+        select: { idProdi: true }
+      });
+      if (!existing || existing.idProdi !== authReq.user.idProdi) {
+        res.status(403).json({ error: "Anda tidak memiliki akses ke data dosen ini" });
+        return;
+      }
+    }
+
     await prisma.dosen.delete({ where: { id: Number(req.params.id) } });
     res.json({ message: "Dosen berhasil dihapus" });
   } catch (error: any) {

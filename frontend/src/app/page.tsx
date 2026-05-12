@@ -166,7 +166,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setUsername("prodi_ti");
+                  setUsername("prodi_tif");
                   setPassword("password123");
                 }}
                 className="px-3 py-2 text-xs font-semibold rounded-lg bg-surface-variant text-on-surface hover:bg-surface-dim transition-colors"

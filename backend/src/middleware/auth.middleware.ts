@@ -8,6 +8,7 @@ export interface AuthRequest extends Request {
     id: number;
     username: string;
     role: string;
+    idProdi: number | null;
   };
 }
 
@@ -26,6 +27,7 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
       id: number;
       username: string;
       role: string;
+      idProdi: number | null;
     };
     req.user = decoded;
     next();
