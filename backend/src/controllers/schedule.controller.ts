@@ -14,6 +14,12 @@ export function setIoInstance(io: any) {
 
 export async function generateSchedule(req: Request, res: Response) {
   try {
+    const authReq = req as any;
+    if (authReq.user.role === "PRODI") {
+      res.status(403).json({ error: "Akun Prodi tidak diizinkan untuk mengenerate jadwal. Hanya Admin PPJK yang dapat melakukan aksi ini." });
+      return;
+    }
+
     const { tahunAkademik, semesterTipe, jumlahJadwal = 1, maxGenerasi = 500 } = req.body;
     const requestedSchedules = Math.min(Number(jumlahJadwal) || 1, 1000);
     const maxGenLimit = Math.min(Number(maxGenerasi) || 500, 2000);
@@ -36,8 +42,6 @@ export async function generateSchedule(req: Request, res: Response) {
       )
     );
     const jadwalMasterId = masters[0].id;
-
-    const authReq = req as any;
     const isProdiRole = authReq.user.role === "PRODI";
 
     // Fetch all required data (Ordered slots are CRITICAL for consecutive session logic)
@@ -433,6 +437,11 @@ export async function updateSlot(req: Request, res: Response) {
 
 export async function deleteSchedule(req: Request, res: Response) {
   try {
+    const authReq = req as any;
+    if (authReq.user.role === "PRODI") {
+      res.status(403).json({ error: "Akun Prodi tidak diizinkan untuk menghapus jadwal." });
+      return;
+    }
     await prisma.jadwalMaster.delete({ where: { id: Number(req.params.id) } });
     res.json({ message: "Jadwal berhasil dihapus" });
   } catch (error) {
@@ -442,6 +451,11 @@ export async function deleteSchedule(req: Request, res: Response) {
 
 export async function bulkDeleteSchedules(req: Request, res: Response) {
   try {
+    const authReq = req as any;
+    if (authReq.user.role === "PRODI") {
+      res.status(403).json({ error: "Akun Prodi tidak diizinkan untuk menghapus jadwal massal." });
+      return;
+    }
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
       res.status(400).json({ error: "ID jadwal tidak valid" });

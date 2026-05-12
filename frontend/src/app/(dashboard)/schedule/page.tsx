@@ -18,7 +18,7 @@ const getProdiColor = (idProdi: number = 0) => PRODI_COLORS[idProdi % PRODI_COLO
 
 export default function SchedulePage() {
   const qc = useQueryClient();
-  const { gaProgress, setGAProgress } = useAppStore();
+  const { gaProgress, setGAProgress, user } = useAppStore();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [draggedItem, setDraggedItem] = useState<(JadwalDetail & { sksTotal?: number; slotIds?: number[]; detailIds?: number[] }) | null>(null);
   const [showAllRooms, setShowAllRooms] = useState(false);
@@ -855,13 +855,15 @@ export default function SchedulePage() {
                   </select>
                   <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
                 </div>
-                <button 
-                  onClick={() => setShowManage(true)}
-                  className="p-2.5 border border-outline-variant rounded-lg text-error hover:bg-error-container/20 transition-all shadow-sm flex items-center justify-center group shrink-0"
-                  title="Kelola Jadwal (Hapus)"
-                >
-                  <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">delete</span>
-                </button>
+                {user?.role !== "PRODI" && (
+                  <button 
+                    onClick={() => setShowManage(true)}
+                    className="p-2.5 border border-outline-variant rounded-lg text-error hover:bg-error-container/20 transition-all shadow-sm flex items-center justify-center group shrink-0"
+                    title="Kelola Jadwal (Hapus)"
+                  >
+                    <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform">delete</span>
+                  </button>
+                )}
               </div>
 
               <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer bg-surface-container-lowest border border-outline-variant px-3 py-2.5 rounded-lg shadow-sm hover:bg-surface-variant/20 transition-all shrink-0">
@@ -885,13 +887,15 @@ export default function SchedulePage() {
                 Export Excel
               </button>
 
-              <button 
-                onClick={() => setShowGenerate(true)} 
-                className="flex-1 sm:flex-none px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-lg hover:bg-primary/90 active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md whitespace-nowrap"
-              >
-                <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
-                Generate Jadwal
-              </button>
+              {user?.role !== "PRODI" && (
+                <button 
+                  onClick={() => setShowGenerate(true)} 
+                  className="flex-1 sm:flex-none px-6 py-2.5 bg-primary text-on-primary font-bold text-sm rounded-lg hover:bg-primary/90 active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md whitespace-nowrap"
+                >
+                  <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+                  Generate Jadwal
+                </button>
+              )}
             </div>
           </div>
 
