@@ -26,6 +26,7 @@ export default function MatkulPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterProdi, setFilterProdi] = useState<number | "all">(isProdiRole ? user.idProdi! : "all");
   const [filterStatus, setFilterStatus] = useState<"all" | "aktif" | "nonaktif">("all");
+  const [activeSemester, setActiveSemester] = useState<number | "all">("all");
 
   const { data: list = [], isLoading } = useQuery<Matkul[]>({
     queryKey: ["matkul"],
@@ -46,9 +47,10 @@ export default function MatkulPage() {
       const matchesStatus = filterStatus === "all" || 
         (filterStatus === "aktif" && it.isAktif) || 
         (filterStatus === "nonaktif" && !it.isAktif);
-      return matchesSearch && matchesProdi && matchesStatus;
+      const matchesSemester = activeSemester === "all" || it.semester === activeSemester;
+      return matchesSearch && matchesProdi && matchesStatus && matchesSemester;
     });
-  }, [list, searchQuery, filterProdi, filterStatus]);
+  }, [list, searchQuery, filterProdi, filterStatus, activeSemester]);
 
   const createMutation = useMutation({
     mutationFn: (data: any) => api.createMatkul(data),
@@ -151,6 +153,24 @@ export default function MatkulPage() {
               {prodiList.map(p => <option key={p.id} value={p.id}>{p.namaProdi}</option>)}
             </select>
           )}
+        </div>
+      </div>
+
+      <div className="w-full bg-surface-container-low rounded-2xl border border-outline-variant/50 overflow-x-auto no-scrollbar scroll-smooth">
+        <div className="flex items-center gap-1.5 p-1.5 min-w-max pr-8">
+          {["all", 1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+            <button
+              key={sem}
+              onClick={() => setActiveSemester(sem as any)}
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+                activeSemester === sem
+                  ? "bg-primary text-on-primary shadow-lg shadow-primary/30"
+                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+              }`}
+            >
+              {sem === "all" ? "Semua Semester" : `Semester ${sem}`}
+            </button>
+          ))}
         </div>
       </div>
 
