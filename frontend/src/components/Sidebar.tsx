@@ -11,7 +11,6 @@ const navItems = [
   { label: "Slot Waktu", href: "/master/waktu", icon: "schedule" },
   { label: "Preferensi Dosen", href: "/master/preferensi", icon: "pending_actions" },
   { label: "Jadwal Perkuliahan", href: "/schedule", icon: "calendar_month" },
-  { label: "Interactive View", href: "/schedule-interactive", icon: "monitoring" },
 ];
 
 export default function Sidebar() {
